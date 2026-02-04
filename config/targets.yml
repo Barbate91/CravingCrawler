@@ -1,0 +1,30 @@
+# List of targets to check regularly. Each entry points to a site config in `config/sites/<site>.yml`.
+# Fields:
+#  - site: key matching a file under config/sites
+#  - url: page to scrape
+#  - region: optional label (used by maintainers)
+#  - enabled: disable/enable without removing
+#  - schedule: optional override (cron-like shorthand: daily@HH:MM or cron)
+#  - selectors: optional override to merge/override site selectors
+
+- site: crumbl
+  url: "https://www.crumblcookies.com/locations/today"
+  region: us-west
+  enabled: true
+  schedule: "daily@09:00"
+
+# Example: multiple URLs for the same site
+- site: crumbl
+  url: "https://www.crumblcookies.com/locations/nyc"
+  region: nyc
+  enabled: false
+  schedule: "daily@08:00"
+
+# Per-target selector override (useful when a site has region-specific markup)
+- site: example-shop
+  url: "https://example.com/specials"
+  enabled: true
+  selectors:
+    item: ".deal"
+    title: ".deal-title"
+    price: ".deal-price"

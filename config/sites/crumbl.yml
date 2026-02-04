@@ -1,0 +1,7 @@
+# Example selectors for a Crumbl-like site (illustrative only)
+selectors:
+  item: ".product-card"
+  title: ".product-title"
+  price: ".product-price"
+rate_limit_seconds: 5
+schedule: "daily@09:00"
