@@ -1,0 +1,331 @@
+---
+interface Props {
+  title?: string;
+}
+const { title = "CravingCrawler" } = Astro.props;
+---
+
+<!doctype html>
+<html lang="en" data-theme="light">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="Track limited-time treats from your favorite spots" />
+    <meta name="color-scheme" content="light" />
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🍪</text></svg>" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+    <title>{title}</title>
+    <style>
+      :root {
+        --pico-font-size: 100%;
+        --pico-border-radius: 0.75rem;
+        --pico-font-family: "Inter", system-ui, sans-serif;
+        --brand-pink: #e8638b;
+        --brand-pink-light: #fdf2f5;
+        --brand-pink-dark: #c4446c;
+        --brand-cream: #fefaf4;
+        --brand-warm: #f5e6d3;
+        --brand-chocolate: #4a2c2a;
+        --brand-gold: #d4a853;
+      }
+      body {
+        background: var(--brand-cream);
+      }
+      h1, h2, h3, h4, h5 {
+        font-family: "Playfair Display", Georgia, serif;
+      }
+
+      /* ── Header ── */
+      .site-header {
+        background: linear-gradient(135deg, var(--brand-pink) 0%, var(--brand-pink-dark) 100%);
+        color: white;
+        padding: 0;
+        margin-bottom: 2.5rem;
+      }
+      .site-header nav {
+        padding: 1rem 0;
+      }
+      .site-header a {
+        color: white;
+        text-decoration: none;
+      }
+      .site-header .logo {
+        font-family: "Playfair Display", Georgia, serif;
+        font-size: 1.4rem;
+        font-weight: 800;
+        letter-spacing: -0.02em;
+      }
+      .site-header .tagline {
+        opacity: 0.85;
+        font-size: 0.85rem;
+      }
+
+      /* ── Hero ── */
+      .hero {
+        text-align: center;
+        padding: 2rem 0 1rem;
+      }
+      .hero h1 {
+        font-size: 2.4rem;
+        font-weight: 800;
+        color: var(--brand-chocolate);
+        margin-bottom: 0.25rem;
+        letter-spacing: -0.02em;
+      }
+      .hero p {
+        color: #7a6b63;
+        font-size: 1.05rem;
+      }
+      .hero .stat {
+        display: inline-block;
+        background: white;
+        border: 1px solid var(--brand-warm);
+        border-radius: 2rem;
+        padding: 0.35rem 1rem;
+        margin: 0.25rem;
+        font-size: 0.9rem;
+        font-weight: 500;
+        color: var(--brand-chocolate);
+      }
+      .hero .stat strong {
+        color: var(--brand-pink);
+      }
+
+      /* ── Site Cards (index) ── */
+      .site-section {
+        margin-bottom: 2.5rem;
+      }
+      .site-section-header {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        margin-bottom: 1rem;
+        border-bottom: 2px solid var(--brand-warm);
+        padding-bottom: 0.5rem;
+      }
+      .site-section-header h2 {
+        font-size: 1.5rem;
+        color: var(--brand-chocolate);
+        margin: 0;
+        text-transform: capitalize;
+      }
+      .site-section-header h2 a {
+        color: var(--brand-chocolate);
+        text-decoration: none;
+      }
+      .site-section-header h2 a:hover {
+        color: var(--brand-pink);
+      }
+      .site-meta {
+        font-size: 0.85rem;
+        color: #9a8b82;
+      }
+      .badge {
+        display: inline-block;
+        padding: 0.2rem 0.6rem;
+        border-radius: 2rem;
+        font-size: 0.75rem;
+        font-weight: 600;
+        background: var(--brand-pink-light);
+        color: var(--brand-pink);
+      }
+
+      /* ── Item Grid ── */
+      .item-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+        gap: 1.25rem;
+      }
+      .item-card {
+        background: white;
+        border: 1px solid var(--brand-warm);
+        border-radius: var(--pico-border-radius);
+        overflow: hidden;
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
+        margin: 0;
+        padding: 0;
+      }
+      .item-card:hover {
+        transform: translateY(-3px);
+        box-shadow: 0 8px 24px rgba(74, 44, 42, 0.08);
+      }
+      .item-card .card-image {
+        width: 100%;
+        height: 200px;
+        object-fit: cover;
+        display: block;
+        background: var(--brand-warm);
+      }
+      .item-card .card-body {
+        padding: 1rem 1.15rem 1.25rem;
+      }
+      .item-card .card-title {
+        font-family: "Playfair Display", Georgia, serif;
+        font-size: 1.1rem;
+        font-weight: 700;
+        color: var(--brand-chocolate);
+        margin: 0 0 0.25rem;
+        line-height: 1.3;
+      }
+      .item-card .card-price {
+        font-size: 0.95rem;
+        font-weight: 600;
+        color: var(--brand-pink);
+        margin-bottom: 0.5rem;
+      }
+      .item-card .card-desc {
+        font-size: 0.85rem;
+        line-height: 1.5;
+        color: #6b5e56;
+        margin: 0;
+      }
+      .card-no-image {
+        height: 80px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: linear-gradient(135deg, var(--brand-pink-light) 0%, var(--brand-warm) 100%);
+        font-size: 2.5rem;
+      }
+
+      /* ── Item Chips (compact view) ── */
+      .item-chip {
+        display: inline-flex;
+        align-items: center;
+        padding: 0.3rem 0.75rem;
+        border-radius: 2rem;
+        background: white;
+        border: 1px solid var(--brand-warm);
+        font-size: 0.85rem;
+        margin: 0.2rem;
+        transition: border-color 0.15s;
+      }
+      .item-chip:hover {
+        border-color: var(--brand-pink);
+      }
+      .item-chip .price {
+        color: var(--brand-pink);
+        font-weight: 600;
+        margin-left: 0.35rem;
+      }
+      .chip-thumb {
+        width: 26px;
+        height: 26px;
+        object-fit: cover;
+        border-radius: 50%;
+        margin-right: 0.4rem;
+        border: 2px solid var(--brand-warm);
+      }
+
+      /* ── Breadcrumb ── */
+      nav.breadcrumb {
+        margin-bottom: 1.5rem;
+      }
+      nav.breadcrumb a {
+        color: var(--brand-pink);
+        text-decoration: none;
+        font-weight: 500;
+        font-size: 0.9rem;
+      }
+      nav.breadcrumb a:hover {
+        color: var(--brand-pink-dark);
+      }
+
+      /* ── Region Tabs ── */
+      .region-tabs {
+        display: flex;
+        gap: 0.5rem;
+        flex-wrap: wrap;
+        margin-bottom: 1.5rem;
+      }
+      .region-tab {
+        display: inline-block;
+        padding: 0.4rem 1rem;
+        border-radius: 2rem;
+        font-size: 0.85rem;
+        font-weight: 500;
+        text-decoration: none;
+        border: 1px solid var(--brand-warm);
+        color: var(--brand-chocolate);
+        background: white;
+        transition: all 0.15s;
+      }
+      .region-tab:hover {
+        border-color: var(--brand-pink);
+        color: var(--brand-pink);
+      }
+      .region-tab.active {
+        background: var(--brand-pink);
+        color: white;
+        border-color: var(--brand-pink);
+      }
+
+      /* ── History ── */
+      details {
+        border: 1px solid var(--brand-warm);
+        border-radius: var(--pico-border-radius);
+        background: white;
+        margin-bottom: 0.75rem;
+      }
+      details summary {
+        font-weight: 500;
+        color: var(--brand-chocolate);
+      }
+
+      /* ── Banners ── */
+      .banner {
+        padding: 1rem 1.5rem;
+        border-radius: var(--pico-border-radius);
+        margin-bottom: 1.5rem;
+      }
+      .banner p {
+        margin-bottom: 0;
+      }
+      .banner-warning {
+        background: #fff8e1;
+        border: 1px solid #ffe082;
+        color: #6d4c00;
+      }
+      .banner-info {
+        background: var(--brand-pink-light);
+        border: 1px solid #f5c6d6;
+        color: var(--brand-pink-dark);
+      }
+
+      /* ── Footer ── */
+      .site-footer {
+        text-align: center;
+        padding: 2rem 0;
+        color: #9a8b82;
+        font-size: 0.85rem;
+        border-top: 1px solid var(--brand-warm);
+        margin-top: 2rem;
+      }
+    </style>
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="container">
+        <nav>
+          <ul>
+            <li><a href="/" class="logo">🍪 CravingCrawler</a></li>
+          </ul>
+          <ul>
+            <li><span class="tagline">Sweet treats, tracked fresh</span></li>
+          </ul>
+        </nav>
+      </div>
+    </header>
+
+    <main class="container">
+      <slot />
+    </main>
+
+    <footer class="site-footer container">
+      <p>🍪 CravingCrawler &middot; Data refreshes automatically &middot; Never miss a limited-time treat</p>
+    </footer>
+  </body>
+</html>

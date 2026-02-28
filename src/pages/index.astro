@@ -1,0 +1,81 @@
+---
+import Base from "../layouts/Base.astro";
+import { loadAllLatest } from "../lib/data";
+import { loadWebConfig } from "../lib/web-config";
+
+const config = await loadWebConfig();
+const summaries = await loadAllLatest();
+const totalItems = summaries.reduce((sum, s) => sum + s.items.length, 0);
+const siteCount = new Set(summaries.map((s) => s.site)).size;
+const emojis = ["🍪", "🧁", "🍰", "🍩", "🎂", "🍫"];
+---
+
+<Base title="CravingCrawler — Current Treats">
+  {!config.configFound && (
+    <div class="banner banner-warning">
+      <p><strong>&#9888; Configuration not found.</strong> No <code>config.yml</code> was detected. Create one to define your sites and scrape targets.</p>
+    </div>
+  )}
+
+  {config.configFound && !config.hasTargets && (
+    <div class="banner banner-warning">
+      <p><strong>&#9888; No scrape targets configured.</strong> Your <code>config.yml</code> has {config.siteCount} site definition(s) but no enabled targets.</p>
+    </div>
+  )}
+
+  {config.hasTargets && summaries.length === 0 && (
+    <div class="banner banner-info">
+      <p><strong>&#8505; Waiting for first scrape.</strong> {config.enabledTargetCount} target(s) configured &mdash; data will appear here after the first run.</p>
+    </div>
+  )}
+
+  <div class="hero">
+    <h1>What&rsquo;s Fresh Today</h1>
+    {summaries.length > 0 ? (
+      <div>
+        <span class="stat"><strong>{totalItems}</strong> treats</span>
+        <span class="stat"><strong>{siteCount}</strong> {siteCount === 1 ? "shop" : "shops"}</span>
+      </div>
+    ) : (
+      <p>No treat data to display yet. The scraper will populate this page automatically.</p>
+    )}
+  </div>
+
+  {summaries.map((s, si) => (
+    <section class="site-section">
+      <div class="site-section-header">
+        <h2><a href={`/site/${s.site}/${s.region}`}>{s.site}</a></h2>
+        <span class="site-meta">
+          {s.region} &middot; <span class="badge">{s.items.length} item{s.items.length !== 1 ? "s" : ""}</span> &middot; {s.date}
+        </span>
+      </div>
+
+      {s.items.length > 0 && (
+        <div class="item-grid">
+          {s.items.slice(0, 6).map((item, i) => (
+            <div class="item-card">
+              {item.image ? (
+                <img src={item.image} alt={item.title} class="card-image" loading="lazy" />
+              ) : (
+                <div class="card-no-image">{emojis[(si + i) % emojis.length]}</div>
+              )}
+              <div class="card-body">
+                <h3 class="card-title">{item.title}</h3>
+                {item.price && <div class="card-price">{item.price}</div>}
+                {item.description && (
+                  <p class="card-desc">{item.description.slice(0, 120)}{item.description.length > 120 ? "..." : ""}</p>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {s.items.length > 6 && (
+        <p style="margin-top: 1rem; text-align: center;">
+          <a href={`/site/${s.site}/${s.region}`} class="region-tab">View all {s.items.length} items &rarr;</a>
+        </p>
+      )}
+    </section>
+  ))}
+</Base>

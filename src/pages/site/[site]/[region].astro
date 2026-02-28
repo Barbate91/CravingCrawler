@@ -1,0 +1,92 @@
+---
+import Base from "../../../layouts/Base.astro";
+import { loadSite, loadHistory } from "../../../lib/data";
+
+const { site, region } = Astro.params;
+if (!site || !region) return Astro.redirect("/");
+
+const allRegions = await loadSite(site);
+const current = allRegions.find((s) => s.region === region);
+if (!current) return Astro.redirect("/");
+
+const history = await loadHistory(site, region);
+const emojis = ["🍪", "🧁", "🍰", "🍩", "🎂", "🍫"];
+---
+
+<Base title={`${site} — ${region} | CravingCrawler`}>
+  <nav class="breadcrumb">
+    <a href="/">&larr; Back to all shops</a>
+  </nav>
+
+  <div class="hero" style="padding-top: 0.5rem;">
+    <h1 style="text-transform: capitalize;">{site}</h1>
+    <p>{region} &middot; Updated {current.date}</p>
+  </div>
+
+  {allRegions.length > 1 && (
+    <div class="region-tabs">
+      {allRegions.map((r) => (
+        <a
+          href={`/site/${site}/${r.region}`}
+          class={`region-tab ${r.region === region ? "active" : ""}`}
+        >
+          {r.region}
+        </a>
+      ))}
+    </div>
+  )}
+
+  <section class="site-section">
+    <div class="site-section-header">
+      <h2>This Week&rsquo;s Menu</h2>
+      <span class="site-meta"><span class="badge">{current.items.length} item{current.items.length !== 1 ? "s" : ""}</span></span>
+    </div>
+
+    {current.items.length === 0 ? (
+      <p style="color: #9a8b82; font-style: italic;">No items found for this region yet.</p>
+    ) : (
+      <div class="item-grid">
+        {current.items.map((item, i) => (
+          <div class="item-card">
+            {item.image ? (
+              <img src={item.image} alt={item.title} class="card-image" loading="lazy" />
+            ) : (
+              <div class="card-no-image">{emojis[i % emojis.length]}</div>
+            )}
+            <div class="card-body">
+              <h3 class="card-title">{item.title}</h3>
+              {item.price && <div class="card-price">{item.price}</div>}
+              {item.description && (
+                <p class="card-desc">{item.description}</p>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+    )}
+  </section>
+
+  {history.length > 1 && (
+    <section class="site-section">
+      <div class="site-section-header">
+        <h2>Recent History</h2>
+      </div>
+      {history.slice(1, 8).map((entry) => (
+        <details>
+          <summary>
+            {entry.date} &mdash; {entry.items.length} item{entry.items.length !== 1 ? "s" : ""}
+          </summary>
+          <div style="padding: 0.5rem;">
+            {entry.items.map((item) => (
+              <span class="item-chip">
+                {item.image && <img src={item.image} alt="" class="chip-thumb" loading="lazy" />}
+                {item.title}
+                {item.price && <span class="price">{item.price}</span>}
+              </span>
+            ))}
+          </div>
+        </details>
+      ))}
+    </section>
+  )}
+</Base>
