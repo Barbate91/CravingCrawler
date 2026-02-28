@@ -1,0 +1,11 @@
+# Example: browser-mode site config
+# Use this for JS-rendered SPAs where plain fetch returns an empty shell
+type: browser
+selectors:
+  item: ".menu-item"
+  title: ".item-name"
+  price: ".item-price"
+browser:
+  waitForSelector: ".menu-item"
+  timeout: 20000
+rate_limit_seconds: 5

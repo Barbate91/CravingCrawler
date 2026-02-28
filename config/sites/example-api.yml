@@ -1,0 +1,11 @@
+# Example: API-mode site config
+# Use this as a template for sites that expose a JSON API
+type: api
+api:
+  url: "https://api.example.com/v1/menu/specials"
+  itemsPath: "data.items"
+  titleKey: "name"
+  priceKey: "price"
+  descriptionKey: "description"
+  imageKey: "imageUrl"
+rate_limit_seconds: 5

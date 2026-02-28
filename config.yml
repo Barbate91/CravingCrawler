@@ -1,0 +1,140 @@
+# CravingCrawler configuration
+# This is the single config file for the entire stack.
+
+settings:
+  interval_minutes: 60          # how often the scraper loops (minutes)
+  rate_limit_seconds: 5         # pause between HTTP requests
+
+notifications:
+  enabled: true
+  discord_webhook_url: "${DISCORD_WEBHOOK_URL}"
+  # discord_bot_token: "${DISCORD_BOT_TOKEN}"
+  # discord_target_user_id: "${DISCORD_TARGET_USER_ID}"
+
+# ─── Site definitions ───────────────────────────────────────────────
+# Each defines HOW to scrape a particular brand/shop.
+
+sites:
+  # Crumbl Cookies — weekly rotating flavors extracted from __NEXT_DATA__
+  crumbl:
+    type: embedded
+    embedded:
+      scriptSelector: "#__NEXT_DATA__"
+      itemsPath: "props.pageProps.products.rotatingMenu.items"
+      titleKey: "dessert.name"
+      descriptionKey: "dessert.description"
+      imageKey: "dessert.aerialImage"
+
+  # Sweet Petite Confections — Square Online shop (JS-rendered Vue app)
+  # Products render client-side; selectors from live DOM inspection
+  sweet-petite:
+    type: browser
+    selectors:
+      title: ".w-product-title"
+      price: ".product-price__wrapper"
+      image: ".figure__image img"
+    browser:
+      waitForSelector: ".w-product-title"
+      timeout: 25000
+
+  # Nothing Bundt Cakes — Magento site, JS-rendered flavor grid
+  nothing-bundt-cakes:
+    type: browser
+    selectors:
+      item: ".flavors-item"
+      title: ".header-bold"
+      image: ".flavors-image img"
+    browser:
+      waitForSelector: ".flavors-item"
+      timeout: 20000
+
+  # Insomnia Cookies — React SPA, product cards with data-ddog attributes
+  insomnia-cookies:
+    type: browser
+    selectors:
+      item: "[data-ddog-id=product_card]"
+      title: "h4"
+      image: "img"
+    browser:
+      waitForSelector: "[data-ddog-id=product_card]"
+      timeout: 20000
+
+  # Stella Jean's Ice Cream — Squarespace, seasonal scoops in h4 tags
+  stella-jeans:
+    type: html
+    selectors:
+      title: ".sqs-html-content h4"
+
+  # Batch & Box — Shopify, server-rendered product cards
+  batch-and-box:
+    type: html
+    selectors:
+      item: ".product-card"
+      title: ".product-card-link"
+      price: ".product-card__price"
+      image: ".product-card__img"
+
+  # Barrio Donas — Square Online (deferred: limited scrapable content)
+  # barrio-donas:
+  #   type: browser
+  #   selectors:
+  #     title: ".w-product-title"
+  #     price: ".product-price__wrapper"
+  #     image: ".figure__image img"
+  #   browser:
+  #     waitForSelector: ".w-product-title"
+  #     timeout: 25000
+
+# ─── Targets ────────────────────────────────────────────────────────
+# Each URL to scrape, referencing a site definition above.
+
+targets:
+  # Crumbl — weekly rotating flavors (changes every Monday)
+  - site: crumbl
+    url: "https://crumblcookies.com/"
+    region: us-weekly
+    enabled: true
+
+  # Sweet Petite — Seasonal & Holiday collection
+  # NOTE: the category ID at the end may increment with new seasonal updates
+  - site: sweet-petite
+    url: "https://www.sweetpetiteconfections.com/shop/SeasonalandHoliday/16"
+    region: seasonal
+    enabled: true
+
+  # Sweet Petite — Bonbons (always-available, track for new flavors)
+  - site: sweet-petite
+    url: "https://www.sweetpetiteconfections.com/shop/chocolatebonbons/4"
+    region: bonbons
+    enabled: true
+
+  # Nothing Bundt Cakes — all flavors including seasonal
+  - site: nothing-bundt-cakes
+    url: "https://www.nothingbundtcakes.com/flavors"
+    region: all-flavors
+    enabled: true
+
+  # Insomnia Cookies — full menu (featured + classics + deluxe)
+  - site: insomnia-cookies
+    url: "https://insomniacookies.com/menu"
+    region: menu
+    enabled: true
+
+  # Stella Jean's — seasonal scoops from homepage
+  - site: stella-jeans
+    url: "https://www.stellajeans.com"
+    region: seasonal
+    enabled: true
+    keywords: ["stracciatella", "creamsicle", "cheesecake", "pistachio", "gulab", "seasonal", "scoops", "mint", "calamansi", "baklava"]
+
+  # Batch & Box — all products
+  - site: batch-and-box
+    url: "https://www.batchandbox.com/collections/all"
+    region: all
+    enabled: true
+
+  # Barrio Donas — deferred (limited scrapable content)
+  # - site: barrio-donas
+  #   url: "https://www.barriodonas.com/menu"
+  #   region: menu
+  #   enabled: true
