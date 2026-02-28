@@ -1,25 +1,33 @@
 {
   "name": "cravingcrawler",
   "version": "0.1.0",
-  "description": "Small, configurable scraper for dessert specials (Bun + TypeScript)",
-  "type": "module",
-  "scripts": {
-    "start": "bun run src/cli.ts",
-    "dev": "bun --watch src/cli.ts",
-    "test": "bun test",
-    "build": "bun build src/cli.ts --outdir dist",
-    "schedule": "bun run src/scheduler.ts"
-  },
   "dependencies": {
+    "@picocss/pico": "^2.1.0",
+    "astro": "^5.7.0",
     "cheerio": "^1.0.0-rc.12",
+    "discord.js": "^14.11.0",
+    "playwright": "^1.58.2",
+    "sharp": "^0.34.5",
     "yaml": "^2.2.1",
-    "yargs": "^17.7.2",
-    "discord.js": "^14.11.0"
+    "yargs": "^17.7.2"
   },
   "devDependencies": {
+    "@types/bun": "latest",
     "typescript": "^5.6.0"
   },
+  "description": "Track limited-time treats — scraper + web dashboard in one Bun app",
   "engines": {
     "bun": ">=1.0.0"
-  }
+  },
+  "scripts": {
+    "dev": "bunx --bun astro dev",
+    "start": "bunx --bun astro build && bun ./dist/server/entry.mjs",
+    "build": "bunx --bun astro build",
+    "preview": "bunx --bun astro preview",
+    "test": "bun test",
+    "schedule": "bun run src/scheduler.ts --config config.yml",
+    "schedule:loop": "bun run src/scheduler.ts --loop --config config.yml",
+    "scrape": "bun run src/cli.ts"
+  },
+  "type": "module"
 }
