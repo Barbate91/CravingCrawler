@@ -1,0 +1,44 @@
+name: CravingCrawler Daily Check
+
+on:
+  schedule:
+    # Run daily at 09:00 UTC (adjust as needed)
+    - cron: "0 9 * * *"
+  workflow_dispatch: # allow manual triggers
+
+jobs:
+  check-treats:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --no-optional  # skip puppeteer in CI unless needed
+
+      - name: Run scheduler
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          RATE_LIMIT_SECONDS: "5"
+        run: bun run src/scheduler.ts --notify --page
+
+      - name: Upload data artifacts
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: treat-data-${{ github.run_number }}
+          path: |
+            data/
+            public/
+          retention-days: 30
+
+      - name: Deploy static page to GitHub Pages
+        if: hashFiles('public/index.html') != ''
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./public
