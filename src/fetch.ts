@@ -1,8 +1,10 @@
 import { setTimeout as sleep } from "timers/promises";
 
-const DEFAULT_RATE_LIMIT = Number(process.env.RATE_LIMIT_SECONDS ?? 5);
+function getDefaultRateLimit() {
+  return Number(process.env.RATE_LIMIT_SECONDS ?? 5);
+}
 
-export async function fetchHtml(url: string, attempts = 3, rateLimitSeconds = DEFAULT_RATE_LIMIT): Promise<string> {
+export async function fetchHtml(url: string, attempts = 3, rateLimitSeconds = getDefaultRateLimit()): Promise<string> {
   let lastErr: unknown;
   for (let i = 0; i < attempts; i++) {
     if (i > 0) await sleep(2 ** i * 100);
