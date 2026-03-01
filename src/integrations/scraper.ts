@@ -1,12 +1,12 @@
 import type { AstroIntegration } from "astro";
 import path from "path";
 import { loadConfig } from "../config.js";
-import { runTargets } from "../scheduler.js";
-import { closeBrowser } from "../fetch-browser.js";
 
 /**
- * Astro integration that runs the scraper loop in-process.
+ * Astro integration that runs the scraper loop as a subprocess.
  * On server start, it loads config.yml and begins periodic scraping.
+ * Each tick spawns `bun src/scheduler.ts` as a child process, so
+ * playwright/sharp/discord.js memory is freed when the subprocess exits.
  * On server stop, it cancels the loop.
  */
 export default function scraperIntegration(): AstroIntegration {
@@ -33,25 +33,25 @@ export default function scraperIntegration(): AstroIntegration {
             if (config.targets.length === 0) {
               console.log("[scraper] No targets configured, sleeping...");
             } else {
-              const res = await runTargets(config.targets, {
-                notify: config.notifications.enabled,
-                webhookOverride: config.notifications.discord_webhook_url ?? null,
-                dataDir,
-                appConfig: config,
+              const args = [
+                "src/scheduler.ts",
+                "--config", configPath,
+                "--data-dir", dataDir,
+              ];
+              if (config.notifications.enabled) {
+                args.push("--notify");
+              }
+
+              const proc = Bun.spawn(["bun", ...args], {
+                stdout: "inherit",
+                stderr: "inherit",
               });
 
-              const summary = res.map((r) => ({
-                site: r.target.site,
-                total: r.items.length,
-                new: r.newItems.length,
-                removed: r.removedItems.length,
-                error: r.error ? String(r.error) : null,
-              }));
-              console.log("[scraper]", JSON.stringify(summary));
+              await proc.exited;
+              console.log(`[scraper] Subprocess exited with code ${proc.exitCode}`);
             }
           } catch (err) {
             console.error("[scraper] Error:", err);
-            await closeBrowser();
           }
 
           if (!running) return;

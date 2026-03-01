@@ -1,17 +1,12 @@
 FROM oven/bun:1 AS base
 WORKDIR /app
 
-# Install Playwright system dependencies (Chromium)
-RUN apt-get update && \
-    npx playwright install-deps chromium && \
-    rm -rf /var/lib/apt/lists/*
-
 # Install dependencies
 COPY package.json ./
 RUN bun install
 
-# Install Playwright browsers
-RUN bunx playwright install chromium
+# Install Chromium browser + system deps using project's playwright version
+RUN bunx playwright install --with-deps chromium
 
 # Copy source + config
 COPY src/ src/
