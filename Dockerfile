@@ -6,7 +6,7 @@ COPY package.json ./
 RUN bun install
 
 # Install Chromium browser + system deps using project's playwright version
-RUN bunx playwright install --with-deps chromium
+RUN apt-get update && bunx playwright install --with-deps chromium && rm -rf /var/lib/apt/lists/*
 
 # Copy source + config
 COPY src/ src/

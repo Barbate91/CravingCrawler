@@ -338,6 +338,8 @@ if (import.meta.main) {
     }
   } else {
     // Single-pass mode
-    await runOnce(runOpts);
+    const { results } = await runOnce(runOpts);
+    const hasErrors = results.some(r => r.error);
+    process.exit(hasErrors ? 1 : 0);
   }
 }

@@ -48,7 +48,11 @@ export default function scraperIntegration(): AstroIntegration {
               });
 
               await proc.exited;
-              console.log(`[scraper] Subprocess exited with code ${proc.exitCode}`);
+              if (proc.exitCode !== 0) {
+                console.error(`[scraper] Subprocess failed with exit code ${proc.exitCode}`);
+              } else {
+                console.log("[scraper] Subprocess completed successfully");
+              }
             }
           } catch (err) {
             console.error("[scraper] Error:", err);
