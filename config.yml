@@ -113,6 +113,52 @@ sites:
           return html;
         })()
 
+  # Island Popper Gourmet Popcorn — Square Online (JS-rendered Vue app)
+  # Single featured product layout — no item container, uses ancestor-walk mode
+  island-popper:
+    type: browser
+    selectors:
+      item: ".item"
+      title: "h3"
+      price: ".price"
+      image: "img"
+    browser:
+      waitForSelector: ".w-product-title"
+      timeout: 25000
+      sectionScript: >
+        (() => {
+          const title = document.querySelector('.w-product-title');
+          const price = document.querySelector('.product-price__wrapper');
+          const img = document.querySelector('.figure__image img');
+          if (!title) return '<div></div>';
+          let html = '<div class="item"><h3>' + title.textContent.trim() + '</h3>';
+          if (price) html += '<span class="price">' + price.textContent.trim() + '</span>';
+          if (img) html += '<img src="' + (img.src || img.getAttribute('srcset')?.split(' ')[0] || '') + '">';
+          html += '</div>';
+          return '<div>' + html + '</div>';
+        })()
+
+  # Sidecar Doughnuts — WordPress, seasonal section extracted via sectionScript
+  sidecar-doughnuts:
+    type: browser
+    selectors:
+      item: ".product-card"
+      title: "h4"
+      image: "picture[data-src]"
+    browser:
+      waitForSelector: ".product-card"
+      timeout: 20000
+      sectionScript: >
+        (() => {
+          const h2s = Array.from(document.querySelectorAll('h2'));
+          const seasonal = h2s.find(h => h.textContent.trim() === 'Seasonal flavors');
+          if (!seasonal) return '<div></div>';
+          const header = seasonal.closest('header');
+          if (!header) return '<div></div>';
+          const menuBoxes = header.nextElementSibling;
+          return menuBoxes ? menuBoxes.outerHTML : '<div></div>';
+        })()
+
   # Barrio Donas — Square Online (deferred: limited scrapable content)
   # barrio-donas:
   #   type: browser
@@ -167,6 +213,18 @@ targets:
   # Batch & Box — seasonal treats from cookies page
   - site: batch-and-box
     url: "https://www.batchandbox.com/pages/cookies"
+    region: seasonal
+    enabled: true
+
+  # Island Popper — featured flavor of the month
+  - site: island-popper
+    url: "https://www.islandpopper.com/featured-flavor"
+    region: featured
+    enabled: true
+
+  # Sidecar Doughnuts — seasonal flavors only
+  - site: sidecar-doughnuts
+    url: "https://sidecardoughnuts.com/menu/"
     region: seasonal
     enabled: true
 

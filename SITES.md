@@ -35,6 +35,17 @@ Track which sites we want to scrape, their status, and configuration notes.
   - Data: 9 products with images and prices
   - Selectors: `.product-card` / `.product-card-link` / `.product-card__price` / `.product-card__img`
 
+- [x] **Island Popper Gourmet Popcorn** — `browser` mode (Square Online, Playwright)
+  - URL: `https://www.islandpopper.com/featured-flavor`
+  - Data: featured flavor of the month with images, titles, prices
+  - Selectors: `.product-group` / `.w-product-title` / `.figure__image img`
+
+- [x] **Sidecar Doughnuts** — `browser` mode (WordPress, sectionScript)
+  - URL: `https://sidecardoughnuts.com/menu/`
+  - Data: seasonal doughnut flavors with images
+  - Selectors: `.product-card` / `h4` / `picture[data-src]`
+  - Notes: Uses sectionScript to extract only the "Seasonal flavors" section.
+
 ## Deferred
 
 - [ ] **Barrio Donas** — Square Online, limited scrapable content
@@ -53,14 +64,6 @@ Track which sites we want to scrape, their status, and configuration notes.
   - URL: TBD
   - Notes: Need to find correct URL and page structure.
 
-- [ ] **Island Popper Gourmet Popcorn** — site unreachable
-  - URL: TBD
-  - Notes: Website was down during research. Revisit later.
-
-- [ ] **Sidecar Donuts** — site unreachable
-  - URL: `https://www.sidecardonuts.com`
-  - Notes: Connection refused during research. Revisit later.
-  - URL is actually `https://sidecardoughnuts.com/`
 
 ## Features
 

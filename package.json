@@ -28,7 +28,9 @@
     "test": "bun test",
     "schedule": "bun run src/scheduler.ts --config config.yml",
     "schedule:loop": "bun run src/scheduler.ts --loop --config config.yml",
-    "scrape": "bun run src/cli.ts"
+    "scrape": "bun run src/cli.ts",
+    "validate": "bun run src/scheduler.ts --data-dir /tmp/cc-validate",
+    "validate:site": "bun run src/scheduler.ts --data-dir /tmp/cc-validate --only-site"
   },
   "type": "module"
 }
