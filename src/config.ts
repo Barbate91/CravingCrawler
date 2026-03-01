@@ -35,6 +35,8 @@ export type SiteDef = {
   api?: ApiConfig;
   browser?: BrowserFetchOptions;
   embedded?: EmbeddedJsonConfig;
+  /** CSS selector for the description element on a product detail page */
+  detail_description_selector?: string;
 };
 
 export type TargetDef = {
@@ -44,8 +46,14 @@ export type TargetDef = {
   enabled?: boolean;
   /** Only keep items whose title or description matches one of these keywords (case-insensitive) */
   keywords?: string[];
+  /** Remove items whose title matches any of these keywords (case-insensitive) */
+  exclude_keywords?: string[];
   /** Auto-discover: try incrementing the trailing number in the URL to find the latest page */
   auto_discover?: boolean;
+  /** Keep only the first N items after all filtering */
+  max_items?: number;
+  /** Exclude items whose title starts with a date pattern like "3/14/26" */
+  exclude_date_titles?: boolean;
 };
 
 const DEFAULTS: Settings = {

@@ -46,22 +46,27 @@ const emojis = ["🍪", "🧁", "🍰", "🍩", "🎂", "🍫"];
       <p style="color: #9a8b82; font-style: italic;">No items found for this region yet.</p>
     ) : (
       <div class="item-grid">
-        {current.items.map((item, i) => (
-          <div class="item-card">
-            {item.image ? (
-              <img src={item.image} alt={item.title} class="card-image" loading="lazy" />
-            ) : (
-              <div class="card-no-image">{emojis[i % emojis.length]}</div>
-            )}
-            <div class="card-body">
-              <h3 class="card-title">{item.title}</h3>
-              {item.price && <div class="card-price">{item.price}</div>}
-              {item.description && (
-                <p class="card-desc">{item.description}</p>
+        {current.items.map((item, i) => {
+          const hasImages = current.items.some((it) => !!it.image);
+          return (
+            <div class="item-card">
+              {item.image ? (
+                <img src={item.image} alt={item.title} class="card-image" loading="lazy" />
+              ) : hasImages ? (
+                <div class="card-no-image">{emojis[i % emojis.length]}</div>
+              ) : (
+                <div class="card-no-image text-placeholder">{item.title}</div>
               )}
+              <div class="card-body">
+                <h3 class="card-title">{item.title}</h3>
+                {item.price && <div class="card-price">{item.price}</div>}
+                {item.description && (
+                  <p class="card-desc">{item.description}</p>
+                )}
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     )}
   </section>

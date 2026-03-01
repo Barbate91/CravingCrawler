@@ -2,12 +2,32 @@
 import Base from "../layouts/Base.astro";
 import { loadAllLatest } from "../lib/data";
 import { loadWebConfig } from "../lib/web-config";
+import type { SiteSummary } from "../lib/data";
 
 const config = await loadWebConfig();
 const summaries = await loadAllLatest();
 const totalItems = summaries.reduce((sum, s) => sum + s.items.length, 0);
-const siteCount = new Set(summaries.map((s) => s.site)).size;
 const emojis = ["🍪", "🧁", "🍰", "🍩", "🎂", "🍫"];
+
+// Group summaries by site name
+const siteGroups = new Map<string, SiteSummary[]>();
+for (const s of summaries) {
+  const group = siteGroups.get(s.site) ?? [];
+  group.push(s);
+  siteGroups.set(s.site, group);
+}
+const siteCount = siteGroups.size;
+
+// Flatten all items into a single list, tagged with site info
+const allCards = summaries.flatMap((s) =>
+  s.items.map((item) => ({
+    ...item,
+    site: s.site,
+    region: s.region,
+    siteLabel: s.site.replace(/-/g, " "),
+    hasImages: s.items.some((i) => !!i.image),
+  }))
+);
 ---
 
 <Base title="CravingCrawler — Current Treats">
@@ -41,41 +61,33 @@ const emojis = ["🍪", "🧁", "🍰", "🍩", "🎂", "🍫"];
     )}
   </div>
 
-  {summaries.map((s, si) => (
-    <section class="site-section">
-      <div class="site-section-header">
-        <h2><a href={`/site/${s.site}/${s.region}`}>{s.site}</a></h2>
-        <span class="site-meta">
-          {s.region} &middot; <span class="badge">{s.items.length} item{s.items.length !== 1 ? "s" : ""}</span> &middot; {s.date}
-        </span>
-      </div>
-
-      {s.items.length > 0 && (
-        <div class="item-grid">
-          {s.items.slice(0, 6).map((item, i) => (
-            <div class="item-card">
-              {item.image ? (
-                <img src={item.image} alt={item.title} class="card-image" loading="lazy" />
-              ) : (
-                <div class="card-no-image">{emojis[(si + i) % emojis.length]}</div>
-              )}
-              <div class="card-body">
-                <h3 class="card-title">{item.title}</h3>
-                {item.price && <div class="card-price">{item.price}</div>}
-                {item.description && (
-                  <p class="card-desc">{item.description.slice(0, 120)}{item.description.length > 120 ? "..." : ""}</p>
-                )}
+  {allCards.length > 0 && (
+    <div class="item-grid">
+      {allCards.map((item, i) => (
+        <div class="item-card">
+          {item.image ? (
+            <img src={item.image} alt={item.title} class="card-image" loading="lazy" />
+          ) : item.hasImages ? (
+            <div class="card-no-image">{emojis[i % emojis.length]}</div>
+          ) : (
+            <div class="card-no-image text-placeholder">{item.title}</div>
+          )}
+          <div class="card-body">
+            <a href={`/site/${item.site}/${item.region}`} class="card-site-label">{item.siteLabel}</a>
+            <h3 class="card-title">{item.title}</h3>
+            {item.price && <div class="card-price">{item.price}</div>}
+            {item.description && (
+              <div>
+                <p class="card-desc">{item.description}</p>
+                <button class="card-expand-btn" aria-label="Toggle description">
+                  <span class="expand-text">Show more</span>
+                  <span class="collapse-text">Show less</span>
+                </button>
               </div>
-            </div>
-          ))}
+            )}
+          </div>
         </div>
-      )}
-
-      {s.items.length > 6 && (
-        <p style="margin-top: 1rem; text-align: center;">
-          <a href={`/site/${s.site}/${s.region}`} class="region-tab">View all {s.items.length} items &rarr;</a>
-        </p>
-      )}
-    </section>
-  ))}
+      ))}
+    </div>
+  )}
 </Base>

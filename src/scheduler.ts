@@ -140,6 +140,64 @@ export async function runTargets(targets: TargetDef[], opts: RunOptions = {}): P
         });
       }
 
+      // Exclude filtering: remove items matching any exclude keyword
+      if (t.exclude_keywords && t.exclude_keywords.length > 0) {
+        const lowerExcludes = t.exclude_keywords.map((k) => k.toLowerCase());
+        items = items.filter((item) => {
+          const text = `${item.title} ${item.description ?? ""}`.toLowerCase();
+          return !lowerExcludes.some((kw) => text.includes(kw));
+        });
+      }
+
+      // Drop items with empty/whitespace-only titles
+      items = items.filter((item) => item.title.trim().length > 0);
+
+      // Exclude items whose title starts with a date pattern (e.g. "3/14/26 @12:30pm")
+      if (t.exclude_date_titles) {
+        items = items.filter((item) => !/^\d{1,2}\/\d{1,2}\//.test(item.title));
+      }
+
+      // Truncate to max_items after all filtering
+      if (t.max_items && t.max_items > 0) {
+        items = items.slice(0, t.max_items);
+      }
+
+      // Normalize image URLs before downloading
+      const baseUrl = new URL(t.url);
+      for (const item of items) {
+        if (item.image) {
+          if (item.image.startsWith("//")) {
+            item.image = "https:" + item.image;
+          } else if (item.image.startsWith("/")) {
+            item.image = `${baseUrl.origin}${item.image}`;
+          }
+        }
+      }
+
+      // Fetch descriptions from detail pages if configured
+      if (siteCfg.detail_description_selector && !opts.dryRun) {
+        for (const item of items) {
+          if (item.link && !item.description) {
+            try {
+              const detailUrl = item.link.startsWith("http") ? item.link : `${baseUrl.origin}${item.link}`;
+              const mode = siteCfg.type ?? "html";
+              let detailHtml: string;
+              if (mode === "browser") {
+                detailHtml = await fetchHtmlWithBrowser(detailUrl, { timeout: 15000 }, 2, siteCfg.rate_limit_seconds ?? 5);
+              } else {
+                detailHtml = await fetchHtml(detailUrl, 2, siteCfg.rate_limit_seconds ?? 5);
+              }
+              const { load } = await import("cheerio");
+              const $detail = load(detailHtml);
+              const desc = $detail(siteCfg.detail_description_selector).text().trim();
+              if (desc) item.description = desc;
+            } catch (err) {
+              console.warn(`[detail-page] Failed to fetch description for "${item.title}":`, err);
+            }
+          }
+        }
+      }
+
       // Download and resize images to local WebP thumbnails
       if (!opts.dryRun) {
         for (const item of items) {

@@ -5,6 +5,12 @@ export type BrowserFetchOptions = {
   waitForSelector?: string;
   /** Max time in ms to wait for the selector (default: 15000) */
   timeout?: number;
+  /** CSS selector for an element to click before extracting (e.g. a category tab) */
+  clickSelector?: string;
+  /** CSS selector to scope extracted HTML to (returns outerHTML of that element instead of full page) */
+  sectionSelector?: string;
+  /** JS code string evaluated in-page that returns an HTML string (for complex scoping logic) */
+  sectionScript?: string;
 };
 
 /**
@@ -45,7 +51,28 @@ export async function fetchHtmlWithBrowser(
         });
       }
 
-      const html = await page.content();
+      if (opts.clickSelector) {
+        // Use locator for richer selector support (text=, :has-text, etc.)
+        await page.locator(opts.clickSelector).first().click({ timeout: opts.timeout ?? 15000 });
+        await sleep(2000); // wait for re-render after click
+        if (opts.waitForSelector) {
+          await page.waitForSelector(opts.waitForSelector, {
+            timeout: opts.timeout ?? 15000,
+          });
+        }
+      }
+
+      let html: string;
+      if (opts.sectionScript) {
+        html = await page.evaluate(opts.sectionScript);
+      } else if (opts.sectionSelector) {
+        html = await page.evaluate((sel) => {
+          const el = document.querySelector(sel);
+          return el ? el.outerHTML : document.documentElement.outerHTML;
+        }, opts.sectionSelector);
+      } else {
+        html = await page.content();
+      }
       await browser.close();
       if (rateLimitSeconds > 0) await sleep(rateLimitSeconds * 1000);
       return html;

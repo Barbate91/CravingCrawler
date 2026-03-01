@@ -2,7 +2,7 @@
 # This is the single config file for the entire stack.
 
 settings:
-  interval_minutes: 60          # how often the scraper loops (minutes)
+  interval_minutes: 1440        # how often the scraper loops (once per day)
   rate_limit_seconds: 5         # pause between HTTP requests
 
 notifications:
@@ -30,12 +30,15 @@ sites:
   sweet-petite:
     type: browser
     selectors:
+      item: ".product-group"
       title: ".w-product-title"
       price: ".product-price__wrapper"
       image: ".figure__image img"
+      link: "a[href]"
     browser:
       waitForSelector: ".w-product-title"
       timeout: 25000
+    detail_description_selector: ".w-product-description"
 
   # Nothing Bundt Cakes — Magento site, JS-rendered flavor grid
   nothing-bundt-cakes:
@@ -48,31 +51,67 @@ sites:
       waitForSelector: ".flavors-item"
       timeout: 20000
 
-  # Insomnia Cookies — React SPA, product cards with data-ddog attributes
+  # Insomnia Cookies — React SPA, "For You" tab = seasonal/limited-time items
   insomnia-cookies:
     type: browser
     selectors:
       item: "[data-ddog-id=product_card]"
       title: "h4"
-      image: "img"
+      image: "img.product-main-image"
     browser:
       waitForSelector: "[data-ddog-id=product_card]"
       timeout: 20000
+      sectionSelector: "#for-you"
 
-  # Stella Jean's Ice Cream — Squarespace, seasonal scoops in h4 tags
+  # Stella Jean's Ice Cream — Squarespace, seasonal scoops
+  # Images are in sibling blocks before titles; zip-mode pairs them by index
+  # Scoped to the seasonal section to avoid grabbing site-wide images
   stella-jeans:
     type: html
     selectors:
-      title: ".sqs-html-content h4"
+      title: "section[data-section-id='67c734602e71b06358c9d538'] .sqs-html-content h4"
+      image: "section[data-section-id='67c734602e71b06358c9d538'] img[data-src]"
 
-  # Batch & Box — Shopify, server-rendered product cards
+  # Batch & Box — Shopify, /pages/cookies seasonal section (JS-rendered titles)
+  # sectionScript extracts only items between "Seasonal Treats" h2 and the next h2
   batch-and-box:
-    type: html
+    type: browser
     selectors:
-      item: ".product-card"
-      title: ".product-card-link"
-      price: ".product-card__price"
-      image: ".product-card__img"
+      item: ".item"
+      title: "h3"
+      image: "img"
+      description: "p"
+    browser:
+      waitForSelector: ".section__title-text"
+      timeout: 20000
+      sectionScript: >
+        (() => {
+          const h2s = Array.from(document.querySelectorAll('h2'));
+          const seasonal = h2s.find(h => h.textContent.trim() === 'Seasonal Treats');
+          if (!seasonal) return '<div></div>';
+          const li = seasonal.closest('.o-layout__item');
+          if (!li) return '<div></div>';
+          const siblings = Array.from(li.parentElement.children);
+          const start = siblings.indexOf(li);
+          const titles = []; const images = []; const descs = [];
+          for (let i = start + 1; i < siblings.length; i++) {
+            const el = siblings[i];
+            const h = el.querySelector('h2');
+            const img = el.querySelector('img.home-custom__img');
+            const p = el.querySelector('p');
+            if (h && h.textContent.trim()) { titles.push(h.textContent.trim()); descs.push(p ? p.textContent.trim() : ''); }
+            if (img) images.push(img.src);
+          }
+          let html = '<div>';
+          for (let i = 0; i < titles.length; i++) {
+            html += '<div class="item"><h3>' + titles[i] + '</h3>';
+            if (images[i]) html += '<img src="' + JSON.stringify(images[i]).slice(1,-1) + '">';
+            if (descs[i]) html += '<p>' + descs[i] + '</p>';
+            html += '</div>';
+          }
+          html += '</div>';
+          return html;
+        })()
 
   # Barrio Donas — Square Online (deferred: limited scrapable content)
   # barrio-donas:
@@ -101,24 +140,22 @@ targets:
     url: "https://www.sweetpetiteconfections.com/shop/SeasonalandHoliday/16"
     region: seasonal
     enabled: true
+    exclude_keywords: ["class", "workshop", "private event", "candle", "lollipop", "gift basket", "build your own"]
+    exclude_date_titles: true
 
-  # Sweet Petite — Bonbons (always-available, track for new flavors)
-  - site: sweet-petite
-    url: "https://www.sweetpetiteconfections.com/shop/chocolatebonbons/4"
-    region: bonbons
-    enabled: true
-
-  # Nothing Bundt Cakes — all flavors including seasonal
+  # Nothing Bundt Cakes — seasonal hero flavor only
   - site: nothing-bundt-cakes
     url: "https://www.nothingbundtcakes.com/flavors"
     region: all-flavors
     enabled: true
+    max_items: 1
 
-  # Insomnia Cookies — full menu (featured + classics + deluxe)
+  # Insomnia Cookies — "For You" seasonal items only
   - site: insomnia-cookies
     url: "https://insomniacookies.com/menu"
     region: menu
     enabled: true
+    exclude_keywords: ["plushie", "pack"]
 
   # Stella Jean's — seasonal scoops from homepage
   - site: stella-jeans
@@ -127,10 +164,10 @@ targets:
     enabled: true
     keywords: ["stracciatella", "creamsicle", "cheesecake", "pistachio", "gulab", "seasonal", "scoops", "mint", "calamansi", "baklava"]
 
-  # Batch & Box — all products
+  # Batch & Box — seasonal treats from cookies page
   - site: batch-and-box
-    url: "https://www.batchandbox.com/collections/all"
-    region: all
+    url: "https://www.batchandbox.com/pages/cookies"
+    region: seasonal
     enabled: true
 
   # Barrio Donas — deferred (limited scrapable content)
