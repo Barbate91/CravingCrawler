@@ -11,7 +11,6 @@ RUN apt-get update && bunx playwright install --with-deps chromium && rm -rf /va
 # Copy source + config
 COPY src/ src/
 COPY config/ config/
-COPY public/ public/
 COPY astro.config.mjs tsconfig.json ./
 
 # Build the Astro SSR site
