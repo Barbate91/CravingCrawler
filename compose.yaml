@@ -1,0 +1,16 @@
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "${WEB_PORT:-4321}:4321"
+    volumes:
+      - ./config.yml:/app/config.yml:ro
+      - treat-data:/app/data
+    environment:
+      - DISCORD_WEBHOOK_URL=${DISCORD_WEBHOOK_URL:-}
+      - DISCORD_BOT_TOKEN=${DISCORD_BOT_TOKEN:-}
+      - DISCORD_TARGET_USER_ID=${DISCORD_TARGET_USER_ID:-}
+
+volumes:
+  treat-data:
