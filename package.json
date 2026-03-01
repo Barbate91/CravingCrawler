@@ -2,6 +2,7 @@
   "name": "cravingcrawler",
   "version": "0.1.0",
   "dependencies": {
+    "@astrojs/node": "^9.5.4",
     "@picocss/pico": "^2.1.0",
     "astro": "^5.7.0",
     "cheerio": "^1.0.0-rc.12",
