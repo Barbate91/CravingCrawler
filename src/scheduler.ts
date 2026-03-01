@@ -5,7 +5,7 @@ import { mkdir } from "fs/promises";
 import path from "path";
 
 import { fetchHtml } from "./fetch.js";
-import { fetchHtmlWithBrowser } from "./fetch-browser.js";
+import { fetchHtmlWithBrowser, closeBrowser } from "./fetch-browser.js";
 import { fetchFromApi } from "./fetch-api.js";
 import { fetchFromEmbeddedJson } from "./fetch-embedded.js";
 import { parseSpecialsFromHtml, Selectors, Special } from "./parse.js";
@@ -117,6 +117,7 @@ export async function runTargets(targets: TargetDef[], opts: RunOptions = {}): P
   const config = opts.appConfig ?? await loadConfig();
   const results: RunResult[] = [];
 
+  try {
   for (const t of targets) {
     if (opts.onlySite && t.site !== opts.onlySite) continue;
     if (t.enabled === false) continue;
@@ -257,6 +258,9 @@ export async function runTargets(targets: TargetDef[], opts: RunOptions = {}): P
     } catch (err) {
       results.push({ target: t, items: [], newItems: [], removedItems: [], error: err });
     }
+  }
+  } finally {
+    await closeBrowser();
   }
   return results;
 }

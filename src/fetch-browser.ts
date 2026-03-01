@@ -1,4 +1,5 @@
 import { setTimeout as sleep } from "timers/promises";
+import type { Browser } from "playwright";
 
 export type BrowserFetchOptions = {
   /** CSS selector to wait for before extracting HTML (ensures JS has rendered) */
@@ -13,12 +14,30 @@ export type BrowserFetchOptions = {
   sectionScript?: string;
 };
 
+let _browser: Browser | null = null;
+
+async function getBrowser(): Promise<Browser> {
+  if (_browser) return _browser;
+  const { chromium } = await import("playwright");
+  _browser = await chromium.launch({ headless: true });
+  return _browser;
+}
+
+export async function closeBrowser(): Promise<void> {
+  if (!_browser) return;
+  try { await _browser.close(); } catch { /* ignore */ }
+  _browser = null;
+}
+
 /**
  * Fetch a page using Playwright (headless Chromium) for JS-rendered content.
  * Returns the fully-rendered HTML string.
  *
  * Playwright is dynamically imported so it's only required when a site
  * config sets `type: browser`.
+ *
+ * The browser process is shared across calls within a scrape cycle and must
+ * be closed by the caller via closeBrowser() when the cycle ends.
  */
 export async function fetchHtmlWithBrowser(
   url: string,
@@ -26,15 +45,13 @@ export async function fetchHtmlWithBrowser(
   attempts = 3,
   rateLimitSeconds = 5,
 ): Promise<string> {
-  const { chromium } = await import("playwright");
-
   let lastErr: unknown;
   for (let i = 0; i < attempts; i++) {
     if (i > 0) await sleep(2 ** i * 100);
-    let browser;
+    let context;
     try {
-      browser = await chromium.launch({ headless: true });
-      const context = await browser.newContext({
+      const browser = await getBrowser();
+      context = await browser.newContext({
         userAgent:
           process.env.USER_AGENT ??
           "CravingCrawler/0.1 (+https://github.com/Barbate91/CravingCrawler)",
@@ -73,12 +90,12 @@ export async function fetchHtmlWithBrowser(
       } else {
         html = await page.content();
       }
-      await browser.close();
+      await context.close();
       if (rateLimitSeconds > 0) await sleep(rateLimitSeconds * 1000);
       return html;
     } catch (err) {
       lastErr = err;
-      try { await browser?.close(); } catch { /* ignore */ }
+      try { await context?.close(); } catch { /* ignore */ }
     }
   }
   throw lastErr;

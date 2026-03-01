@@ -2,6 +2,7 @@ import type { AstroIntegration } from "astro";
 import path from "path";
 import { loadConfig } from "../config.js";
 import { runTargets } from "../scheduler.js";
+import { closeBrowser } from "../fetch-browser.js";
 
 /**
  * Astro integration that runs the scraper loop in-process.
@@ -50,6 +51,7 @@ export default function scraperIntegration(): AstroIntegration {
             }
           } catch (err) {
             console.error("[scraper] Error:", err);
+            await closeBrowser();
           }
 
           if (!running) return;
