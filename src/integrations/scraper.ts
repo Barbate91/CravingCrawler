@@ -42,6 +42,9 @@ export default function scraperIntegration(): AstroIntegration {
                 args.push("--notify");
               }
 
+              const memBefore = process.memoryUsage();
+              console.log(`[scraper] Memory before: RSS=${Math.round(memBefore.rss / 1024 / 1024)}MB heap=${Math.round(memBefore.heapUsed / 1024 / 1024)}MB`);
+
               const proc = Bun.spawn(["bun", ...args], {
                 stdout: "inherit",
                 stderr: "inherit",
@@ -52,6 +55,16 @@ export default function scraperIntegration(): AstroIntegration {
                 console.error(`[scraper] Subprocess failed with exit code ${proc.exitCode}`);
               } else {
                 console.log("[scraper] Subprocess completed successfully");
+              }
+
+              Bun.gc(true);
+
+              const memAfter = process.memoryUsage();
+              console.log(`[scraper] Memory after: RSS=${Math.round(memAfter.rss / 1024 / 1024)}MB heap=${Math.round(memAfter.heapUsed / 1024 / 1024)}MB`);
+
+              if (process.env.HEAP_SNAPSHOT) {
+                Bun.generateHeapSnapshot(`/app/data/heap-${Date.now()}.json`);
+                console.log("[scraper] Heap snapshot saved");
               }
             }
           } catch (err) {
