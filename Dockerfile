@@ -16,11 +16,12 @@ COPY astro.config.mjs tsconfig.json ./
 # Build the Astro SSR site
 RUN bunx --bun astro build
 
-# Data + images directories will be mounted/created
-RUN mkdir -p /app/data /app/public/images
+# Data directory will be mounted/created; images dir is created at runtime by images.ts
+RUN mkdir -p /app/data
 
 ENV NODE_ENV=production
 ENV DATA_DIR=/app/data
+ENV IMAGE_DIR=/app/dist/client/images
 ENV HOST=0.0.0.0
 ENV PORT=4321
 
