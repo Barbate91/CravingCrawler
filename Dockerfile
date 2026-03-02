@@ -26,4 +26,4 @@ ENV PORT=4321
 
 EXPOSE 4321
 
-CMD ["bun", "./dist/server/entry.mjs"]
+CMD ["bun", "src/prod-server.ts"]
