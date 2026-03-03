@@ -11,6 +11,12 @@ services:
       - DISCORD_WEBHOOK_URL=${DISCORD_WEBHOOK_URL:-}
       - DISCORD_BOT_TOKEN=${DISCORD_BOT_TOKEN:-}
       - DISCORD_TARGET_USER_ID=${DISCORD_TARGET_USER_ID:-}
+    networks:
+      - caddy_net
+
+networks:
+  caddy_net:
+    external: true
 
 volumes:
   treat-data:
