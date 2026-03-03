@@ -1,5 +1,5 @@
 services:
-  app:
+  cravingcrawler:
     build: .
     restart: unless-stopped
     ports:
@@ -17,8 +17,6 @@ services:
 networks:
   caddy_net:
     external: true
-    aliases:
-      - cravingcrawler
 
 volumes:
   treat-data:
