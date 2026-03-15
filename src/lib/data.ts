@@ -48,8 +48,14 @@ export async function loadAllLatest(): Promise<SiteSummary[]> {
 
       const latestFile = jsonFiles[0];
       const date = latestFile.replace(".json", "");
-      const raw = await readFile(path.join(regionPath, latestFile), "utf8");
-      const items = JSON.parse(raw) as Special[];
+      let items: Special[];
+      try {
+        const raw = await readFile(path.join(regionPath, latestFile), "utf8");
+        items = JSON.parse(raw) as Special[];
+      } catch (err) {
+        console.warn(`[data] Skipping corrupt file ${path.join(regionPath, latestFile)}:`, err);
+        continue;
+      }
       summaries.push({ site, region, date, items });
     }
   }
@@ -84,8 +90,12 @@ export async function loadHistory(siteKey: string, region: string): Promise<{ da
   const history: { date: string; items: Special[] }[] = [];
   for (const f of jsonFiles.slice(0, 14)) {
     const date = f.replace(".json", "");
-    const raw = await readFile(path.join(regionPath, f), "utf8");
-    history.push({ date, items: JSON.parse(raw) });
+    try {
+      const raw = await readFile(path.join(regionPath, f), "utf8");
+      history.push({ date, items: JSON.parse(raw) });
+    } catch (err) {
+      console.warn(`[data] Skipping corrupt file ${path.join(regionPath, f)}:`, err);
+    }
   }
   return history;
 }
