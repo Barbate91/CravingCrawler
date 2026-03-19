@@ -46,6 +46,17 @@ Track which sites we want to scrape, their status, and configuration notes.
   - Selectors: `.product-card` / `h4` / `picture[data-src]`
   - Notes: Uses sectionScript to extract only the "Seasonal flavors" section.
 
+- [x] **Baskin-Robbins** — `browser` mode (sectionScript; CSS background-image extraction)
+  - URL: `https://www.baskinrobbins.com/en/flavor-of-the-month`
+  - Data: single Flavor of the Month — title, description, image
+  - Notes: Image is a CSS `background-image`; sectionScript normalizes it to `<img>`. Targets only the FOM hero, not the "Perfect Match" grid of permanent flavors.
+
+- [x] **Cold Stone Creamery** — `html` mode (server-rendered)
+  - URL: `https://www.coldstonecreamery.com/icecream/signaturecreations/index.html`
+  - Data: first 3 signature creations (seasonal) — title, image, link
+  - Selectors: `ul.parentLanding li` / `.ctabtn` / `img`
+  - Notes: Grid lists all signature creations; only first 3 are seasonal. Uses `max_items: 3`.
+
 ## Deferred
 
 - [ ] **Barrio Donas** — Square Online, limited scrapable content

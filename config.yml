@@ -159,6 +159,42 @@ sites:
           return menuBoxes ? menuBoxes.outerHTML : '<div></div>';
         })()
 
+  # Baskin-Robbins — Flavor of the Month (browser mode; image is CSS background-image, extracted via sectionScript)
+  baskin-robbins:
+    type: browser
+    selectors:
+      item: ".item"
+      title: "h3"
+      image: "img"
+      description: "p"
+    browser:
+      waitForSelector: ".heading--color-pink-robbins"
+      timeout: 20000
+      sectionScript: >
+        (() => {
+          const titleEl = document.querySelector('.heading--color-pink-robbins span');
+          const descEl = document.querySelector('.text.u-authorable p');
+          const bgEl = document.querySelector('[data-action="background"]');
+          const style = bgEl ? bgEl.getAttribute('style') || '' : '';
+          const imgMatch = style.match(/background-image:\s*url\(['"]?([^'")]+)['"]?\)/);
+          const title = titleEl ? titleEl.textContent.trim() : '';
+          if (!title) return '<div></div>';
+          let html = '<div><div class="item"><h3>' + title + '</h3>';
+          if (imgMatch) html += '<img src="' + imgMatch[1] + '">';
+          if (descEl) html += '<p>' + descEl.textContent.trim() + '</p>';
+          html += '</div></div>';
+          return html;
+        })()
+
+  # Cold Stone Creamery — Signature Creations grid (html mode; first 3 are seasonal)
+  coldstone:
+    type: html
+    selectors:
+      item: "ul.parentLanding li"
+      title: ".ctabtn"
+      image: "img"
+      link: "a"
+
   # Barrio Donas — Square Online (deferred: limited scrapable content)
   # barrio-donas:
   #   type: browser
@@ -227,6 +263,19 @@ targets:
     url: "https://sidecardoughnuts.com/menu/"
     region: seasonal
     enabled: true
+
+  # Baskin-Robbins — flavor of the month
+  - site: baskin-robbins
+    url: "https://www.baskinrobbins.com/en/flavor-of-the-month"
+    region: flavor-of-the-month
+    enabled: true
+
+  # Cold Stone Creamery — first 3 items in signature creations grid are seasonal
+  - site: coldstone
+    url: "https://www.coldstonecreamery.com/icecream/signaturecreations/index.html"
+    region: signature-creations
+    enabled: true
+    max_items: 3
 
   # Barrio Donas — deferred (limited scrapable content)
   # - site: barrio-donas
