@@ -57,15 +57,20 @@ export async function fetchHtmlWithBrowser(
           "CravingCrawler/0.1 (+https://github.com/Barbate91/CravingCrawler)",
       });
       const page = await context.newPage();
+      console.log(`[browser] navigating to ${url}`);
+      const navStart = Date.now();
       await page.goto(url, {
-        waitUntil: "networkidle",
+        waitUntil: "domcontentloaded",
         timeout: opts.timeout ?? 15000,
       });
+      console.log(`[browser] DOM loaded in ${Date.now() - navStart}ms`);
 
       if (opts.waitForSelector) {
+        console.log(`[browser] waiting for selector: ${opts.waitForSelector}`);
         await page.waitForSelector(opts.waitForSelector, {
           timeout: opts.timeout ?? 15000,
         });
+        console.log(`[browser] selector ready in ${Date.now() - navStart}ms`);
       }
 
       if (opts.clickSelector) {

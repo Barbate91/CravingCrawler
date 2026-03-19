@@ -174,7 +174,7 @@ sites:
         (() => {
           const titleEl = document.querySelector('.heading--color-pink-robbins span');
           const descEl = document.querySelector('.text.u-authorable p');
-          const bgEl = document.querySelector('[data-action="background"]');
+          const bgEl = document.querySelector('[id*="product_info"][data-action="background"]') || document.querySelector('[data-action="background"]');
           const style = bgEl ? bgEl.getAttribute('style') || '' : '';
           const imgMatch = style.match(/background-image:\s*url\(['"]?([^'")]+)['"]?\)/);
           const title = titleEl ? titleEl.textContent.trim() : '';

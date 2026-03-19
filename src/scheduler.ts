@@ -120,8 +120,10 @@ export async function runTargets(targets: TargetDef[], opts: RunOptions = {}): P
   for (const t of targets) {
     if (opts.onlySite && t.site !== opts.onlySite) continue;
     if (t.enabled === false) continue;
+    const label = `${t.site}/${t.region ?? "default"}`;
     try {
       const siteCfg = getSiteConfig(config, t.site);
+      const mode = siteCfg.type ?? "html";
 
       // Auto-discover: try incrementing trailing number in URL to find latest page
       let targetUrl = t.url;
@@ -129,7 +131,10 @@ export async function runTargets(targets: TargetDef[], opts: RunOptions = {}): P
         targetUrl = await autoDiscoverUrl(t.url, siteCfg);
       }
 
+      console.log(`[scrape] ${label} — fetching via ${mode} (${targetUrl})`);
+      const fetchStart = Date.now();
       let items = await fetchItems({ ...t, url: targetUrl }, siteCfg);
+      console.log(`[scrape] ${label} — fetched ${items.length} item(s) in ${Date.now() - fetchStart}ms`);
 
       // Keyword filtering: only keep items matching at least one keyword
       if (t.keywords && t.keywords.length > 0) {
@@ -165,12 +170,8 @@ export async function runTargets(targets: TargetDef[], opts: RunOptions = {}): P
       // Normalize image URLs before downloading
       const baseUrl = new URL(t.url);
       for (const item of items) {
-        if (item.image) {
-          if (item.image.startsWith("//")) {
-            item.image = "https:" + item.image;
-          } else if (item.image.startsWith("/")) {
-            item.image = `${baseUrl.origin}${item.image}`;
-          }
+        if (item.image && !item.image.startsWith("http")) {
+          item.image = new URL(item.image, baseUrl).href;
         }
       }
 
@@ -200,6 +201,10 @@ export async function runTargets(targets: TargetDef[], opts: RunOptions = {}): P
 
       // Download and resize images to local WebP thumbnails
       if (!opts.dryRun) {
+        const withImages = items.filter(i => i.image?.startsWith("http"));
+        if (withImages.length > 0) {
+          console.log(`[scrape] ${label} — downloading ${withImages.length} image(s)`);
+        }
         for (const item of items) {
           if (item.image && item.image.startsWith("http")) {
             const slug = item.title.replace(/[^a-z0-9]+/gi, "-").toLowerCase().slice(0, 40);
@@ -212,6 +217,7 @@ export async function runTargets(targets: TargetDef[], opts: RunOptions = {}): P
       const previous = await loadPreviousItems(dataDir, t.site, t.region);
       const newItems = previous ? findNewItems(previous, items) : items;
       const removedItems = previous ? findRemovedItems(previous, items) : [];
+      console.log(`[scrape] ${label} — done: ${items.length} total, +${newItems.length} new, -${removedItems.length} removed`);
 
       results.push({ target: t, items, newItems, removedItems });
 
@@ -255,6 +261,7 @@ export async function runTargets(targets: TargetDef[], opts: RunOptions = {}): P
         }
       }
     } catch (err) {
+      console.error(`[scrape] ${label} — error: ${err instanceof Error ? err.message : err}`);
       results.push({ target: t, items: [], newItems: [], removedItems: [], error: err });
     }
   }
@@ -278,6 +285,10 @@ async function runOnce(opts: {
   const webhookOverride = opts.webhook ?? config.notifications.discord_webhook_url ?? null;
   const shouldNotify = opts.notify ?? config.notifications.enabled;
 
+  const activeTargets = targets.filter(t => t.enabled !== false && (!opts.onlySite || t.site === opts.onlySite));
+  console.log(`[CravingCrawler] Scrape started — ${activeTargets.length} target(s)`);
+  const runStart = Date.now();
+
   const res = await runTargets(targets, {
     onlySite: opts.onlySite,
     dryRun: opts.dryRun,
@@ -287,6 +298,10 @@ async function runOnce(opts: {
     dataDir: opts.dataDir,
     appConfig: config,
   });
+
+  const elapsed = ((Date.now() - runStart) / 1000).toFixed(1);
+  const succeeded = res.filter(r => !r.error).length;
+  console.log(`[CravingCrawler] Scrape finished in ${elapsed}s — ${succeeded}/${res.length} succeeded`);
 
   // print short summary
   const summary = res.map(r => ({
