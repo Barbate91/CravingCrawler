@@ -67,14 +67,10 @@ sites:
   # Images are in sibling blocks before titles; zip-mode pairs them by index
   # Scoped to the seasonal section to avoid grabbing site-wide images
   stella-jeans:
-    type: browser
+    type: html
     selectors:
-      item: ".sqs-html-content"
-      title: "h4"
-      image: "img[data-src]"
-    browser:
-      waitForSelector: "h4"
-      timeout: 20000
+      title: "section[data-section-id='67c734602e71b06358c9d538'] .sqs-html-content h4"
+      image: "section[data-section-id='67c734602e71b06358c9d538'] img[data-src]"
 
   # Batch & Box — Shopify, /pages/cookies seasonal section (JS-rendered titles)
   # sectionScript extracts only items between "Seasonal Treats" h2 and the next h2
