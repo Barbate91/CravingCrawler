@@ -67,10 +67,13 @@ sites:
   # Images are in sibling blocks before titles; zip-mode pairs them by index
   # Scoped to the seasonal section to avoid grabbing site-wide images
   stella-jeans:
-    type: html
+    type: browser
     selectors:
       title: "section[data-section-id='67c734602e71b06358c9d538'] .sqs-html-content h4"
       image: "section[data-section-id='67c734602e71b06358c9d538'] img[data-src]"
+    browser:
+      waitForSelector: "section[data-section-id='67c734602e71b06358c9d538'] h4"
+      timeout: 20000
 
   # Batch & Box — Shopify, /pages/cookies seasonal section (JS-rendered titles)
   # sectionScript extracts only items between "Seasonal Treats" h2 and the next h2
@@ -244,7 +247,6 @@ targets:
     url: "https://www.stellajeans.com"
     region: seasonal
     enabled: true
-    keywords: ["stracciatella", "creamsicle", "cheesecake", "pistachio", "gulab", "seasonal", "scoops", "mint", "calamansi", "baklava"]
 
   # Batch & Box — seasonal treats from cookies page
   - site: batch-and-box
