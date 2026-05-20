@@ -18,7 +18,10 @@ jobs:
           bun-version: latest
 
       - name: Install dependencies
-        run: bun install --no-optional  # skip puppeteer in CI unless needed
+        run: bun install
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
 
       - name: Run scheduler
         env:
@@ -37,7 +40,7 @@ jobs:
           retention-days: 30
 
       - name: Deploy static page to GitHub Pages
-        if: hashFiles('public/index.html') != ''
+        if: always() && hashFiles('public/index.html') != ''
         uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
