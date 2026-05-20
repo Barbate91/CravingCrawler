@@ -1,21 +1,28 @@
 ---
 import Base from "../../../layouts/Base.astro";
-import { loadSite, loadHistory } from "../../../lib/data";
+import { loadAllLatest, loadSite, loadHistory } from "../../../lib/data";
+
+export async function getStaticPaths() {
+  const summaries = await loadAllLatest();
+  return summaries.map((s) => ({
+    params: { site: s.site, region: s.region },
+  }));
+}
 
 const { site, region } = Astro.params;
-if (!site || !region) return Astro.redirect("/");
+const base = import.meta.env.BASE_URL.replace(/\/$/, "");
 
-const allRegions = await loadSite(site);
+const allRegions = await loadSite(site!);
 const current = allRegions.find((s) => s.region === region);
-if (!current) return Astro.redirect("/");
+if (!current) return Astro.redirect(import.meta.env.BASE_URL);
 
-const history = await loadHistory(site, region);
+const history = await loadHistory(site!, region!);
 const emojis = ["🍪", "🧁", "🍰", "🍩", "🎂", "🍫"];
 ---
 
 <Base title={`${site} — ${region} | CravingCrawler`}>
   <nav class="breadcrumb">
-    <a href="/">&larr; Back to all shops</a>
+    <a href={import.meta.env.BASE_URL}>&larr; Back to all shops</a>
   </nav>
 
   <div class="hero" style="padding-top: 0.5rem;">
@@ -27,7 +34,7 @@ const emojis = ["🍪", "🧁", "🍰", "🍩", "🎂", "🍫"];
     <div class="region-tabs">
       {allRegions.map((r) => (
         <a
-          href={`/site/${site}/${r.region}`}
+          href={`${base}/site/${site}/${r.region}`}
           class={`region-tab ${r.region === region ? "active" : ""}`}
         >
           {r.region}
@@ -48,10 +55,11 @@ const emojis = ["🍪", "🧁", "🍰", "🍩", "🎂", "🍫"];
       <div class="item-grid">
         {current.items.map((item, i) => {
           const hasImages = current.items.some((it) => !!it.image);
+          const imgSrc = item.image?.startsWith("/") ? `${base}${item.image}` : item.image;
           return (
             <div class="item-card">
               {item.image ? (
-                <img src={item.image} alt={item.title} class="card-image" loading="lazy" />
+                <img src={imgSrc} alt={item.title} class="card-image" loading="lazy" />
               ) : hasImages ? (
                 <div class="card-no-image">{emojis[i % emojis.length]}</div>
               ) : (
@@ -82,13 +90,16 @@ const emojis = ["🍪", "🧁", "🍰", "🍩", "🎂", "🍫"];
             {entry.date} &mdash; {entry.items.length} item{entry.items.length !== 1 ? "s" : ""}
           </summary>
           <div style="padding: 0.5rem;">
-            {entry.items.map((item) => (
-              <span class="item-chip">
-                {item.image && <img src={item.image} alt="" class="chip-thumb" loading="lazy" />}
-                {item.title}
-                {item.price && <span class="price">{item.price}</span>}
-              </span>
-            ))}
+            {entry.items.map((item) => {
+              const imgSrc = item.image?.startsWith("/") ? `${base}${item.image}` : item.image;
+              return (
+                <span class="item-chip">
+                  {item.image && <img src={imgSrc} alt="" class="chip-thumb" loading="lazy" />}
+                  {item.title}
+                  {item.price && <span class="price">{item.price}</span>}
+                </span>
+              );
+            })}
           </div>
         </details>
       ))}

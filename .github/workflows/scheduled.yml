@@ -29,7 +29,10 @@ jobs:
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
           RATE_LIMIT_SECONDS: "5"
-        run: bun run src/scheduler.ts --notify --page
+        run: bun run src/scheduler.ts --notify
+
+      - name: Build static site
+        run: bunx --bun astro build --config astro.config.pages.mjs
 
       - name: Upload data artifacts
         uses: actions/upload-artifact@v4
@@ -38,12 +41,12 @@ jobs:
           name: treat-data-${{ github.run_number }}
           path: |
             data/
-            public/
+            dist/
           retention-days: 30
 
-      - name: Deploy static page to GitHub Pages
-        if: always() && hashFiles('public/index.html') != ''
+      - name: Deploy to GitHub Pages
+        if: always() && hashFiles('dist/index.html') != ''
         uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./public
+          publish_dir: ./dist

@@ -8,6 +8,7 @@ const config = await loadWebConfig();
 const summaries = await loadAllLatest();
 const totalItems = summaries.reduce((sum, s) => sum + s.items.length, 0);
 const emojis = ["🍪", "🧁", "🍰", "🍩", "🎂", "🍫"];
+const base = import.meta.env.BASE_URL.replace(/\/$/, "");
 
 // Group summaries by site name
 const siteGroups = new Map<string, SiteSummary[]>();
@@ -63,31 +64,34 @@ const allCards = summaries.flatMap((s) =>
 
   {allCards.length > 0 && (
     <div class="item-grid">
-      {allCards.map((item, i) => (
-        <div class="item-card">
-          {item.image ? (
-            <img src={item.image} alt={item.title} class="card-image" loading="lazy" />
-          ) : item.hasImages ? (
-            <div class="card-no-image">{emojis[i % emojis.length]}</div>
-          ) : (
-            <div class="card-no-image text-placeholder">{item.title}</div>
-          )}
-          <div class="card-body">
-            <a href={`/site/${item.site}/${item.region}`} class="card-site-label">{item.siteLabel}</a>
-            <h3 class="card-title">{item.title}</h3>
-            {item.price && <div class="card-price">{item.price}</div>}
-            {item.description && (
-              <div>
-                <p class="card-desc">{item.description}</p>
-                <button class="card-expand-btn" aria-label="Toggle description">
-                  <span class="expand-text">Show more</span>
-                  <span class="collapse-text">Show less</span>
-                </button>
-              </div>
+      {allCards.map((item, i) => {
+        const imgSrc = item.image?.startsWith("/") ? `${base}${item.image}` : item.image;
+        return (
+          <div class="item-card">
+            {item.image ? (
+              <img src={imgSrc} alt={item.title} class="card-image" loading="lazy" />
+            ) : item.hasImages ? (
+              <div class="card-no-image">{emojis[i % emojis.length]}</div>
+            ) : (
+              <div class="card-no-image text-placeholder">{item.title}</div>
             )}
+            <div class="card-body">
+              <a href={`${base}/site/${item.site}/${item.region}`} class="card-site-label">{item.siteLabel}</a>
+              <h3 class="card-title">{item.title}</h3>
+              {item.price && <div class="card-price">{item.price}</div>}
+              {item.description && (
+                <div>
+                  <p class="card-desc">{item.description}</p>
+                  <button class="card-expand-btn" aria-label="Toggle description">
+                    <span class="expand-text">Show more</span>
+                    <span class="collapse-text">Show less</span>
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   )}
 </Base>
