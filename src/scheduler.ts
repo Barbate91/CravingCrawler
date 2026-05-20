@@ -14,6 +14,7 @@ import { sendDiscordWebhook, sendDiscordMessageFromEnv } from "./notify.js";
 import { loadPreviousItems, findNewItems, findRemovedItems } from "./diff.js";
 import { loadConfig, getSiteConfig, type AppConfig, type TargetDef, type SiteDef } from "./config.js";
 import { downloadAndResize } from "./images.js";
+import { writeStaticPage } from "./static-page.js";
 
 // Re-export for backward compat with tests
 export type Target = TargetDef;
@@ -327,6 +328,7 @@ if (import.meta.main) {
   const notifyAll = argv.includes("--notify-all");
   const webhook = argv.includes("--webhook") ? argv[argv.indexOf("--webhook") + 1] : undefined;
   const loopFlag = argv.includes("--loop");
+  const pageFlag = argv.includes("--page");
   const dataDir = argv.includes("--data-dir")
     ? path.resolve(argv[argv.indexOf("--data-dir") + 1])
     : path.resolve(process.cwd(), "data");
@@ -354,6 +356,11 @@ if (import.meta.main) {
   } else {
     // Single-pass mode
     const { results } = await runOnce(runOpts);
+    if (pageFlag) {
+      const outPath = path.resolve(process.cwd(), "public/index.html");
+      await writeStaticPage(dataDir, outPath);
+      console.log(`[CravingCrawler] Static page written to ${outPath}`);
+    }
     const hasErrors = results.some(r => r.error);
     process.exit(hasErrors ? 1 : 0);
   }
