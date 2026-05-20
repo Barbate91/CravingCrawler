@@ -26,6 +26,7 @@ jobs:
         run: npx playwright install --with-deps chromium
 
       - name: Run scheduler
+        continue-on-error: true
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
           RATE_LIMIT_SECONDS: "5"
@@ -45,7 +46,7 @@ jobs:
           retention-days: 30
 
       - name: Deploy to GitHub Pages
-        if: always() && hashFiles('dist/index.html') != ''
+        if: hashFiles('dist/index.html') != ''
         uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
