@@ -272,12 +272,21 @@ jobs:
       - name: Submit to Hermes Runs API
         id: submit_run
         run: |
-          RESPONSE=$(curl -sf -X POST http://127.0.0.1:8642/v1/runs \
+          HTTP_CODE=$(curl -s -o /tmp/hermes_runs_response.json -w "%{http_code}" \
+            -X POST http://127.0.0.1:8642/v1/runs \
             -H "Authorization: Bearer $HERMES_API_KEY" \
             -H "Content-Type: application/json" \
             -d @/tmp/hermes_task.json)
 
-          RUN_ID=$(echo "$RESPONSE" | python3 -c "import sys,json; print(json.load(sys.stdin)['id'])")
+          echo "HTTP status: $HTTP_CODE"
+          echo "Response body: $(cat /tmp/hermes_runs_response.json)"
+
+          if [ "$HTTP_CODE" -lt 200 ] || [ "$HTTP_CODE" -ge 300 ]; then
+            echo "Hermes API error (HTTP $HTTP_CODE)"
+            exit 1
+          fi
+
+          RUN_ID=$(python3 -c "import json; print(json.load(open('/tmp/hermes_runs_response.json'))['run_id'])")
           echo "run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
         env:
           HERMES_API_KEY: ${{ secrets.HERMES_API_KEY }}
@@ -293,7 +302,7 @@ jobs:
           POLL=15
 
           while [ "$ELAPSED" -lt "$MAX_WAIT" ]; do
-            RESULT=$(curl -sf "http://127.0.0.1:8642/v1/runs/$RUN_ID" \
+            RESULT=$(curl -s "http://127.0.0.1:8642/v1/runs/$RUN_ID" \
               -H "Authorization: Bearer $HERMES_API_KEY")
 
             STATUS=$(echo "$RESULT" | python3 -c \
