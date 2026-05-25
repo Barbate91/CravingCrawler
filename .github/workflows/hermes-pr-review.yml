@@ -132,22 +132,22 @@ jobs:
 
           ```bash
           # Hardcoded secrets
-          grep "^+" /tmp/pr.diff | grep -iE "(api_key|secret|password|token|passwd)\s*=\s*['\"][^'\"]{{6,}}['\"]"
+          grep "^+" /tmp/pr.diff | grep -iE "(api_key|secret|password|token|passwd)\\s*=\\s*['\"][^'\"]{{6,}}['\"]"
 
           # Shell injection (Python)
-          grep "^+" /tmp/pr.diff | grep -E "os\.system\(|subprocess.*shell=True"
+          grep "^+" /tmp/pr.diff | grep -E "os\\.system\\(|subprocess.*shell=True"
 
           # Dangerous eval/exec
-          grep "^+" /tmp/pr.diff | grep -E "\beval\(|\bexec\("
+          grep "^+" /tmp/pr.diff | grep -E "\\beval\\(|\\bexec\\("
 
           # Unsafe deserialization
-          grep "^+" /tmp/pr.diff | grep -E "pickle\.loads?\("
+          grep "^+" /tmp/pr.diff | grep -E "pickle\\.loads?\\("
 
           # SQL injection (string formatting in queries)
-          grep "^+" /tmp/pr.diff | grep -E "execute\(f\"|\.format\(.*SELECT|\.format\(.*INSERT"
+          grep "^+" /tmp/pr.diff | grep -E "execute\\(f\"|\\.format\\(.*SELECT|\\.format\\(.*INSERT"
 
           # JavaScript XSS
-          grep "^+" /tmp/pr.diff | grep -E "innerHTML\s*=|dangerouslySetInnerHTML"
+          grep "^+" /tmp/pr.diff | grep -E "innerHTML\\s*=|dangerouslySetInnerHTML"
           ```
 
           ---
@@ -310,10 +310,11 @@ jobs:
             echo "[${ELAPSED}s] status: $STATUS"
 
             if [ "$STATUS" = "completed" ]; then
-              echo "$RESULT" | python3 - << 'PYEOF'
-          import sys, json
-          r = json.load(sys.stdin)
-          out = r.get("output") or r.get("result") or r.get("response") or r.get("content") or ""
+              echo "$RESULT" > /tmp/hermes_run_result.json
+              python3 << 'PYEOF'
+          import json
+          r = json.load(open('/tmp/hermes_run_result.json'))
+          out = r.get("output") or ""
           if isinstance(out, list):
               out = "\n".join(
                   x.get("text", str(x)) if isinstance(x, dict) else str(x)
