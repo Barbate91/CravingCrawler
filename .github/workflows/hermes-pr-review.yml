@@ -1,0 +1,358 @@
+name: Hermes PR Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  review:
+    runs-on: self-hosted
+    timeout-minutes: 30
+    permissions:
+      pull-requests: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Gather PR context
+        id: context
+        env:
+          BASE_REF: ${{ github.base_ref }}
+          HEAD_REF: ${{ github.head_ref }}
+        run: |
+          git fetch origin "$BASE_REF" "$HEAD_REF"
+
+          git diff "origin/$BASE_REF...HEAD" > /tmp/pr.diff
+          git diff --name-status "origin/$BASE_REF...HEAD" > /tmp/pr.files
+          git log --oneline --no-merges "origin/$BASE_REF..HEAD" > /tmp/pr.commits
+
+          CHANGED_DIRS=$(git diff --name-only "origin/$BASE_REF...HEAD" \
+            | xargs -I{} dirname {} | sort -u | tr '\n' ' ')
+          echo "changed_dirs=$CHANGED_DIRS" >> "$GITHUB_OUTPUT"
+
+          HAS_SHELL=$(git diff --name-only "origin/$BASE_REF...HEAD" \
+            | grep -cE '\.(sh|bash)$' || true)
+          echo "has_shell=$HAS_SHELL" >> "$GITHUB_OUTPUT"
+
+      - name: Truncate diff if oversized
+        run: |
+          MAX_LINES=4000
+          ACTUAL=$(wc -l < /tmp/pr.diff)
+          if [ "$ACTUAL" -gt "$MAX_LINES" ]; then
+            head -n "$MAX_LINES" /tmp/pr.diff > /tmp/pr.diff.trunc
+            printf '\n[... diff truncated at %s of %s lines — Hermes: read full files via terminal at %s ...]\n' \
+              "$MAX_LINES" "$ACTUAL" "$GITHUB_WORKSPACE" >> /tmp/pr.diff.trunc
+            mv /tmp/pr.diff.trunc /tmp/pr.diff
+          fi
+
+      - name: Build Hermes task JSON
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+          REPO: ${{ github.repository }}
+          BASE_REF: ${{ github.base_ref }}
+          HEAD_REF: ${{ github.head_ref }}
+          CHANGED_DIRS: ${{ steps.context.outputs.changed_dirs }}
+          HAS_SHELL: ${{ steps.context.outputs.has_shell }}
+        run: |
+          # Build the prompt text safely using a Python heredoc
+          # All untrusted values arrive as env vars and are JSON-encoded by python — no shell injection
+          python3 << 'PYEOF'
+          import os, json
+
+          has_shell = int(os.environ.get("HAS_SHELL", "0"))
+          shell_section = ""
+          if has_shell > 0:
+              shell_section = """
+          ## Shell Script Review
+          This PR modifies shell scripts. Apply bash-script-fix skill behaviors:
+          - Check for missing `set -euo pipefail`
+          - Flag unquoted variables and word-splitting risks
+          - Verify exit codes are checked after critical commands
+          - Flag any command injection risks from unvalidated inputs
+          """
+
+          prompt = f"""# GitHub Pull Request Code Review
+
+          You are performing a thorough code review of a GitHub pull request.
+          The repository is checked out at: {os.environ['GITHUB_WORKSPACE']}
+
+          ## PR Details
+          - Repository: {os.environ['REPO']}
+          - PR #{os.environ['PR_NUMBER']}: {os.environ['PR_TITLE']}
+          - Author: {os.environ['PR_AUTHOR']}
+          - Base → Head: {os.environ['BASE_REF']} → {os.environ['HEAD_REF']}
+          - Changed directories: {os.environ['CHANGED_DIRS']}
+
+          ## Commits in This PR
+          {open('/tmp/pr.commits').read().strip()}
+
+          ## Changed Files
+          {open('/tmp/pr.files').read().strip()}
+
+          ## Diff
+          {open('/tmp/pr.diff').read().strip()}
+
+          ---
+
+          ## Review Instructions
+
+          You are an independent code reviewer. You have no prior context about how these
+          changes were made — that is intentional. Fresh eyes catch what the author misses.
+          No agent should verify its own work.
+
+          Work through the phases below in order. Use your terminal and file tools throughout.
+
+          ---
+
+          ### Phase 0 — Codebase Orientation (codebase-deep-dive skill)
+
+          Before reading a single line of diff, orient yourself to the project. In
+          {os.environ['GITHUB_WORKSPACE']}, read these files in order (stop when none remain):
+
+          1. README.md — purpose, quick-start, architecture overview
+          2. ARCHITECTURE.md or DESIGN_PLAN.md — stack choices, directory layout, DB schema
+          3. CLAUDE.md or CONVENTIONS.md — coding standards and project-specific gotchas
+          4. pyproject.toml / package.json / Cargo.toml / go.mod — dependencies and runtime
+
+          Extract and note: tech stack, database/ORM, test command, and any stated conventions.
+          This context governs all findings below — do not flag style issues that conflict with
+          documented project conventions.
+
+          ---
+
+          ### Phase 1 — Static Security Scan (requesting-code-review skill)
+
+          Run these terminal commands against the diff at /tmp/pr.diff. Any match is a
+          potential security concern — note the line and include it in Phase 3 findings.
+
+          ```bash
+          # Hardcoded secrets
+          grep "^+" /tmp/pr.diff | grep -iE "(api_key|secret|password|token|passwd)\s*=\s*['\"][^'\"]{{6,}}['\"]"
+
+          # Shell injection (Python)
+          grep "^+" /tmp/pr.diff | grep -E "os\.system\(|subprocess.*shell=True"
+
+          # Dangerous eval/exec
+          grep "^+" /tmp/pr.diff | grep -E "\beval\(|\bexec\("
+
+          # Unsafe deserialization
+          grep "^+" /tmp/pr.diff | grep -E "pickle\.loads?\("
+
+          # SQL injection (string formatting in queries)
+          grep "^+" /tmp/pr.diff | grep -E "execute\(f\"|\.format\(.*SELECT|\.format\(.*INSERT"
+
+          # JavaScript XSS
+          grep "^+" /tmp/pr.diff | grep -E "innerHTML\s*=|dangerouslySetInnerHTML"
+          ```
+
+          ---
+
+          ### Phase 2 — Baseline Test Check (requesting-code-review skill)
+
+          Detect the project's test framework and run the suite BEFORE applying changes
+          (stash the diff), then again AFTER. Only NEW failures introduced by this PR matter.
+
+          ```bash
+          cd {os.environ['GITHUB_WORKSPACE']}
+
+          # Detect framework and run — pick the one that matches
+          # Python:  python -m pytest --tb=no -q 2>&1 | tail -5
+          # Node:    npm test -- --passWithNoTests 2>&1 | tail -5
+          # Rust:    cargo test 2>&1 | tail -5
+          # Go:      go test ./... 2>&1 | tail -5
+
+          # Run linting if tools are installed (silently skip if not):
+          which ruff && ruff check . 2>&1 | tail -10
+          which mypy && mypy . --ignore-missing-imports 2>&1 | tail -10
+          which npx && npx tsc --noEmit 2>&1 | tail -10
+          ```
+
+          Record the baseline failure count. Then restore HEAD and run again. Report only
+          regressions introduced by the PR, not pre-existing failures.
+
+          ---
+
+          ### Phase 3 — Diff Analysis
+
+          Now read the diff and changed files. Use terminal to read full file context wherever
+          the diff alone is insufficient to judge correctness or intent.
+
+          **Skills to activate during analysis:**
+
+          **GitHub workflow review** (github skill): Use gh CLI if needed to fetch linked
+          issues or related PRs. Verify commit messages are clear and branch naming follows
+          project conventions.
+
+          **Test infrastructure review** (test-infrastructure-pitfalls skill): Check for schema
+          divergence between test fixtures and production migrations. Verify feature completeness
+          — tests must cover error paths, not just happy paths. Flag tests that share state
+          across cases or skip cleanup, which would pass locally but fail in CI.
+
+          {shell_section}
+
+          **Security review**: Beyond the Phase 1 scan, flag:
+          - Insecure direct object references or missing ownership checks on new endpoints
+          - Missing auth/authz guards
+          - New dependency additions — note the package name; flag if unfamiliar or recently
+            published (supply chain awareness, oss-forensics discipline)
+
+          **Two-stage assessment — answer both independently:**
+          1. *Spec compliance:* Does the code do what the PR title and commit messages claim?
+             Are there unstated side effects or scope creep?
+          2. *Code quality:* Is the implementation well-built — correct edge cases, no logic
+             errors, adequate test coverage, readable, no regressions?
+
+          **Review criteria for each changed file:**
+          1. Correctness — logic matches stated intent; edge cases and error paths covered
+          2. Test coverage — new behavior tested; fixtures in sync with production schema
+          3. Security — Phase 1 findings plus the above
+          4. Readability — clear identifiers; added complexity is justified
+          5. Performance — N+1 queries, unbounded loops, implied missing indexes
+          6. Breaking changes — public API, serialization format, or schema changes that need
+             a migration or coordinated deploy
+
+          ---
+
+          ### Anti-Hallucination Rules (cite-before-answer / research-protocol discipline)
+
+          - Only cite file paths and line numbers you have actually read via terminal or file
+            tools in this session. If unsure, read the file before citing it.
+          - Mark unverified inferences with [HYPOTHESIS].
+          - Do not invent function signatures or behavior. Read the file first.
+          - If the diff was truncated, say so and use terminal to read the full file.
+          - Every finding must cite the specific file and line that supports it.
+
+          ---
+
+          ### Output Format
+
+          Produce a GitHub PR review comment in markdown:
+
+          ## Summary
+          What the PR does, overall quality signal, and the single most important finding.
+
+          ## Security Scan Results
+          Findings from Phase 1 grep commands. "None found" is a valid result.
+
+          ## Test Regression Check
+          Baseline vs. HEAD failure counts. Any new failures are blocking.
+
+          ## Findings
+
+          **[SEVERITY] `file:line` — Title**
+          Description. Suggested fix if non-obvious.
+
+          Severity: CRITICAL | HIGH | MEDIUM | LOW | NIT
+          Large diff (>200 changed lines): report CRITICAL and HIGH only.
+          Small diff (<50 changed lines): report all severity levels.
+
+          ## Spec Compliance
+          Does the implementation match what the PR claims to do? PASS or list of gaps.
+
+          ## Test Coverage Assessment
+          Observations using test-infrastructure-pitfalls patterns.
+
+          ## Verdict
+          One of: ✅ Approve | ⚠️ Approve with comments | 🔴 Request changes
+          One-sentence reason.
+          """
+
+          payload = {"input": prompt, "store": False}
+          with open("/tmp/hermes_task.json", "w") as f:
+              json.dump(payload, f)
+
+          print("Prompt written to /tmp/hermes_task.json")
+          PYEOF
+
+      - name: Submit to Hermes Runs API
+        id: submit_run
+        run: |
+          RESPONSE=$(curl -sf -X POST http://127.0.0.1:8642/v1/runs \
+            -H "Authorization: Bearer $HERMES_API_KEY" \
+            -H "Content-Type: application/json" \
+            -d @/tmp/hermes_task.json)
+
+          RUN_ID=$(echo "$RESPONSE" | python3 -c "import sys,json; print(json.load(sys.stdin)['id'])")
+          echo "run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
+        env:
+          HERMES_API_KEY: ${{ secrets.HERMES_API_KEY }}
+
+      - name: Wait for Hermes to complete
+        id: wait_run
+        env:
+          HERMES_API_KEY: ${{ secrets.HERMES_API_KEY }}
+          RUN_ID: ${{ steps.submit_run.outputs.run_id }}
+        run: |
+          MAX_WAIT=1500
+          ELAPSED=0
+          POLL=15
+
+          while [ "$ELAPSED" -lt "$MAX_WAIT" ]; do
+            RESULT=$(curl -sf "http://127.0.0.1:8642/v1/runs/$RUN_ID" \
+              -H "Authorization: Bearer $HERMES_API_KEY")
+
+            STATUS=$(echo "$RESULT" | python3 -c \
+              "import sys,json; print(json.load(sys.stdin).get('status','unknown'))")
+            echo "[${ELAPSED}s] status: $STATUS"
+
+            if [ "$STATUS" = "completed" ]; then
+              echo "$RESULT" | python3 - << 'PYEOF'
+          import sys, json
+          r = json.load(sys.stdin)
+          out = r.get("output") or r.get("result") or r.get("response") or r.get("content") or ""
+          if isinstance(out, list):
+              out = "\n".join(
+                  x.get("text", str(x)) if isinstance(x, dict) else str(x)
+                  for x in out
+              )
+          with open("/tmp/hermes_review.md", "w") as f:
+              f.write(out)
+          PYEOF
+              echo "status=completed" >> "$GITHUB_OUTPUT"
+              break
+
+            elif [ "$STATUS" = "failed" ] || [ "$STATUS" = "error" ]; then
+              echo "status=failed" >> "$GITHUB_OUTPUT"
+              exit 1
+            fi
+
+            sleep "$POLL"
+            ELAPSED=$((ELAPSED + POLL))
+          done
+
+          if [ "$ELAPSED" -ge "$MAX_WAIT" ]; then
+            echo "status=timeout" >> "$GITHUB_OUTPUT"
+            exit 1
+          fi
+
+      - name: Post review comment
+        if: steps.wait_run.outputs.status == 'completed'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const review = fs.readFileSync('/tmp/hermes_review.md', 'utf8');
+            const ts = new Date().toISOString().slice(0, 16) + ' UTC';
+            const header = `> 🤖 **Hermes Review** (qwen3.6-35b-a3b) · ${ts}\n\n`;
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: header + review
+            });
+
+      - name: Post failure notice
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: '> 🤖 **Hermes Review** — agent run failed or timed out. Check the Actions log for details.'
+            });
