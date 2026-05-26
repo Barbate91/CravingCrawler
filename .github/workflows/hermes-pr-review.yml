@@ -351,7 +351,7 @@ jobs:
             const fs = require('fs');
             const review = fs.readFileSync('/tmp/hermes_review.md', 'utf8');
             const ts = new Date().toISOString().slice(0, 16) + ' UTC';
-            const header = `> 🤖 **Hermes Review** (deepseek-v3-5 via openrouter) · ${ts}\n\n`;
+            const header = `> 🤖 **Hermes Review** (deepseek-v4-flash via openrouter) · ${ts}\n\n`;
             await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
