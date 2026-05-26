@@ -20,12 +20,25 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Check Hermes code-reviewer service (port 8643)
+        run: |
+          set -euo pipefail
+          echo "Verifying Hermes code-reviewer service is reachable on port 8643..."
+          if ! curl -fsS --max-time 10 http://127.0.0.1:8643/health > /tmp/hermes_health.json 2>&1; then
+            echo "ERROR: Hermes code-reviewer service (port 8643) is not reachable."
+            echo "Health response: $(cat /tmp/hermes_health.json 2>/dev/null || echo '(no response)')"
+            echo "Check: systemctl --user status hermes-code-reviewer"
+            exit 1
+          fi
+          echo "Hermes health OK: $(cat /tmp/hermes_health.json)"
+
       - name: Gather PR context
         id: context
         env:
           BASE_REF: ${{ github.base_ref }}
           HEAD_REF: ${{ github.head_ref }}
         run: |
+          set -euo pipefail
           git fetch origin "$BASE_REF" "$HEAD_REF"
 
           git diff "origin/$BASE_REF...HEAD" > /tmp/pr.diff
@@ -40,16 +53,80 @@ jobs:
             | grep -cE '\.(sh|bash)$' || true)
           echo "has_shell=$HAS_SHELL" >> "$GITHUB_OUTPUT"
 
+          DIFF_LINES=$(wc -l < /tmp/pr.diff)
+          echo "diff_lines=$DIFF_LINES" >> "$GITHUB_OUTPUT"
+          echo "PR diff: $DIFF_LINES lines across $(wc -l < /tmp/pr.files) changed files"
+
       - name: Truncate diff if oversized
         run: |
+          set -euo pipefail
           MAX_LINES=4000
           ACTUAL=$(wc -l < /tmp/pr.diff)
           if [ "$ACTUAL" -gt "$MAX_LINES" ]; then
+            echo "WARNING: Diff is $ACTUAL lines (max $MAX_LINES) — truncating. Hermes should read full files via terminal."
             head -n "$MAX_LINES" /tmp/pr.diff > /tmp/pr.diff.trunc
             printf '\n[... diff truncated at %s of %s lines — Hermes: read full files via terminal at %s ...]\n' \
               "$MAX_LINES" "$ACTUAL" "$GITHUB_WORKSPACE" >> /tmp/pr.diff.trunc
             mv /tmp/pr.diff.trunc /tmp/pr.diff
+          else
+            echo "Diff size OK: $ACTUAL lines"
           fi
+
+      - name: Pre-flight context (tests + build)
+        id: preflight
+        run: |
+          set -euo pipefail
+          WORKSPACE="$GITHUB_WORKSPACE"
+          TIMEOUT=300  # 5 minutes max for pre-flight
+
+          echo "(not run)" > /tmp/preflight_test.txt
+          echo "(not run)" > /tmp/preflight_build.txt
+
+          TEST_CMD=""
+          BUILD_CMD=""
+
+          # Per-repo override: .hermes-review.yml takes precedence
+          if [ -f "$WORKSPACE/.hermes-review.yml" ]; then
+            TEST_CMD=$(python3 -c "import sys,yaml; cfg=yaml.safe_load(open(sys.argv[1])); print(cfg.get('test_command',''))" "$WORKSPACE/.hermes-review.yml" 2>/dev/null || true)
+            BUILD_CMD=$(python3 -c "import sys,yaml; cfg=yaml.safe_load(open(sys.argv[1])); print(cfg.get('build_command',''))" "$WORKSPACE/.hermes-review.yml" 2>/dev/null || true)
+          fi
+
+          # Auto-detect if no override
+          if [ -z "$TEST_CMD" ]; then
+            if [ -f "$WORKSPACE/Cargo.toml" ]; then
+              TEST_CMD="cargo test 2>&1 | tail -20"
+              BUILD_CMD="cargo build 2>&1 | tail -5"
+            elif [ -f "$WORKSPACE/package.json" ] && command -v bun &>/dev/null; then
+              grep -q '"test"' "$WORKSPACE/package.json" 2>/dev/null && TEST_CMD="bun test --bail 2>&1 | tail -30" || true
+              grep -q '"build"' "$WORKSPACE/package.json" 2>/dev/null && BUILD_CMD="bun run build 2>&1 | tail -10" || true
+            elif [ -f "$WORKSPACE/package.json" ]; then
+              TEST_CMD="npm test -- --passWithNoTests 2>&1 | tail -20"
+            elif [ -f "$WORKSPACE/pyproject.toml" ] || [ -f "$WORKSPACE/requirements.txt" ]; then
+              TEST_CMD="python -m pytest --tb=short -q 2>&1 | tail -20"
+            fi
+          fi
+
+          cd "$WORKSPACE"
+
+          if [ -n "$TEST_CMD" ]; then
+            echo "Running tests: $TEST_CMD"
+            timeout "$TIMEOUT" bash -c "$TEST_CMD" > /tmp/preflight_test.txt 2>&1 || \
+              echo "[tests exited non-zero — see above]" >> /tmp/preflight_test.txt
+          fi
+
+          if [ -n "$BUILD_CMD" ]; then
+            echo "Running build: $BUILD_CMD"
+            timeout "$TIMEOUT" bash -c "$BUILD_CMD" > /tmp/preflight_build.txt 2>&1 || \
+              echo "[build exited non-zero — see above]" >> /tmp/preflight_build.txt
+          fi
+
+          # Repo tree (top 3 levels, exclude noise)
+          find . -maxdepth 3 \
+            -not -path './.git/*' -not -path './node_modules/*' -not -path './target/*' \
+            -not -path './.svelte-kit/*' -not -path './dist/*' -not -path './__pycache__/*' \
+            | sort | head -100 > /tmp/preflight_tree.txt 2>/dev/null || true
+
+          echo "Pre-flight complete. Test: $(wc -l < /tmp/preflight_test.txt) lines, Build: $(wc -l < /tmp/preflight_build.txt) lines"
 
       - name: Build Hermes task JSON
         env:
@@ -62,10 +139,17 @@ jobs:
           CHANGED_DIRS: ${{ steps.context.outputs.changed_dirs }}
           HAS_SHELL: ${{ steps.context.outputs.has_shell }}
         run: |
+          set -euo pipefail
           # Build the prompt text safely using a Python heredoc
           # All untrusted values arrive as env vars and are JSON-encoded by python — no shell injection
           python3 << 'PYEOF'
           import os, json
+
+          def _read(path, default="(not available)"):
+              try:
+                  return open(path).read().strip() or default
+              except Exception:
+                  return default
 
           has_shell = int(os.environ.get("HAS_SHELL", "0"))
           shell_section = ""
@@ -79,6 +163,10 @@ jobs:
           - Flag any command injection risks from unvalidated inputs
           """
 
+          test_result = _read('/tmp/preflight_test.txt')
+          build_result = _read('/tmp/preflight_build.txt')
+          repo_tree = _read('/tmp/preflight_tree.txt')
+
           prompt = f"""# GitHub Pull Request Code Review
 
           You are performing a thorough code review of a GitHub pull request.
@@ -91,14 +179,23 @@ jobs:
           - Base → Head: {os.environ['BASE_REF']} → {os.environ['HEAD_REF']}
           - Changed directories: {os.environ['CHANGED_DIRS']}
 
+          ## Pre-flight Test Results
+          {test_result}
+
+          ## Pre-flight Build Status
+          {build_result}
+
+          ## Repository Tree (top 3 levels)
+          {repo_tree}
+
           ## Commits in This PR
-          {open('/tmp/pr.commits').read().strip()}
+          {_read('/tmp/pr.commits')}
 
           ## Changed Files
-          {open('/tmp/pr.files').read().strip()}
+          {_read('/tmp/pr.files')}
 
           ## Diff
-          {open('/tmp/pr.diff').read().strip()}
+          {_read('/tmp/pr.diff')}
 
           ---
 
@@ -277,42 +374,59 @@ jobs:
         env:
           HERMES_API_KEY: ${{ secrets.HERMES_API_KEY }}
         run: |
+          set -euo pipefail
+
+          # Warn if MAX_WAIT leaves less than 10 minutes before job timeout
+          TIMEOUT_SECONDS=$((90 * 60))
+          MAX_WAIT=4800
+          MARGIN=$((TIMEOUT_SECONDS - MAX_WAIT))
+          if [ "$MARGIN" -lt 600 ]; then
+            echo "WARNING: MAX_WAIT=${MAX_WAIT}s leaves only ${MARGIN}s before job timeout (${TIMEOUT_SECONDS}s). Consider reducing MAX_WAIT."
+          fi
+
           (
             flock -x 200
-            echo "[$(date -u +%H:%M:%S)] Hermes slot acquired"
+            echo "[$(date -u +%H:%M:%S)] Hermes slot acquired — POSTing to port 8643 (code-reviewer profile)"
 
             HTTP_CODE=$(curl -s -o /tmp/hermes_runs_response.json -w "%{http_code}" \
-              -X POST http://127.0.0.1:8642/v1/runs \
+              --max-time 30 \
+              -X POST http://127.0.0.1:8643/v1/runs \
               -H "Authorization: Bearer $HERMES_API_KEY" \
               -H "Content-Type: application/json" \
               -d @/tmp/hermes_task.json)
 
-            echo "HTTP status: $HTTP_CODE"
-            echo "Response body: $(cat /tmp/hermes_runs_response.json)"
+            echo "POST /v1/runs — HTTP $HTTP_CODE"
+            echo "Response: $(cat /tmp/hermes_runs_response.json)"
 
             if [ "$HTTP_CODE" -lt 200 ] || [ "$HTTP_CODE" -ge 300 ]; then
-              echo "Hermes API error (HTTP $HTTP_CODE)"
+              echo "ERROR: Hermes API returned HTTP $HTTP_CODE — failing."
               exit 1
             fi
 
             RUN_ID=$(python3 -c "import json; print(json.load(open('/tmp/hermes_runs_response.json'))['run_id'])")
             echo "run_id: $RUN_ID"
 
-            MAX_WAIT=4800
             ELAPSED=0
             POLL=15
 
             while [ "$ELAPSED" -lt "$MAX_WAIT" ]; do
-              RESULT=$(curl -s "http://127.0.0.1:8642/v1/runs/$RUN_ID" \
+              POLL_RESPONSE=$(curl -s --max-time 15 "http://127.0.0.1:8643/v1/runs/$RUN_ID" \
                 -H "Authorization: Bearer $HERMES_API_KEY")
+              CURL_EXIT=$?
 
-              STATUS=$(echo "$RESULT" | python3 -c \
-                "import sys,json; print(json.load(sys.stdin).get('status','unknown'))")
-              echo "[${ELAPSED}s] status: $STATUS"
+              if [ "$CURL_EXIT" -ne 0 ]; then
+                echo "[${ELAPSED}s] WARNING: poll request failed (curl exit $CURL_EXIT) — will retry"
+              else
+                STATUS=$(echo "$POLL_RESPONSE" | python3 -c \
+                  "import sys,json; print(json.load(sys.stdin).get('status','unknown'))")
+                MODEL=$(echo "$POLL_RESPONSE" | python3 -c \
+                  "import sys,json; d=json.load(sys.stdin); print(d.get('model') or d.get('config',{}).get('model','unknown'))" 2>/dev/null || echo "unknown")
+                echo "[${ELAPSED}s] status: $STATUS | model: $MODEL"
+                echo "$POLL_RESPONSE" > /tmp/hermes_poll_latest.json
 
-              if [ "$STATUS" = "completed" ]; then
-                echo "$RESULT" > /tmp/hermes_run_result.json
-                python3 << 'PYEOF'
+                if [ "$STATUS" = "completed" ]; then
+                  cp /tmp/hermes_poll_latest.json /tmp/hermes_run_result.json
+                  python3 << 'PYEOF'
           import json
           r = json.load(open('/tmp/hermes_run_result.json'))
           out = r.get("output") or ""
@@ -323,13 +437,19 @@ jobs:
               )
           with open("/tmp/hermes_review.md", "w") as f:
               f.write(out)
+          model = r.get("model") or r.get("config", {}).get("model", "unknown")
+          with open("/tmp/hermes_model.txt", "w") as f:
+              f.write(str(model))
           PYEOF
-                echo "status=completed" >> "$GITHUB_OUTPUT"
-                break
+                  echo "status=completed" >> "$GITHUB_OUTPUT"
+                  break
 
-              elif [ "$STATUS" = "failed" ] || [ "$STATUS" = "error" ]; then
-                echo "status=failed" >> "$GITHUB_OUTPUT"
-                exit 1
+                elif [ "$STATUS" = "failed" ] || [ "$STATUS" = "error" ]; then
+                  echo "ERROR: Hermes run $RUN_ID ended with status '$STATUS'"
+                  echo "$POLL_RESPONSE" >> /tmp/hermes_run_result.json
+                  echo "status=failed" >> "$GITHUB_OUTPUT"
+                  exit 1
+                fi
               fi
 
               sleep "$POLL"
@@ -337,6 +457,7 @@ jobs:
             done
 
             if [ "$ELAPSED" -ge "$MAX_WAIT" ]; then
+              echo "ERROR: Hermes run $RUN_ID did not complete within ${MAX_WAIT}s"
               echo "status=timeout" >> "$GITHUB_OUTPUT"
               exit 1
             fi
@@ -354,8 +475,11 @@ jobs:
               core.setFailed('Hermes returned an empty review — check model or context limits');
               return;
             }
+            const model = fs.existsSync('/tmp/hermes_model.txt')
+              ? fs.readFileSync('/tmp/hermes_model.txt', 'utf8').trim()
+              : 'unknown model';
             const ts = new Date().toISOString().slice(0, 16) + ' UTC';
-            const header = `> 🤖 **Hermes Review** (Qwen3.6-35B-A3B via Localhost) · ${ts}\n\n`;
+            const header = `> 🤖 **Hermes Code Review** (${model}) · ${ts}\n\n`;
             await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
@@ -363,14 +487,51 @@ jobs:
               body: header + review
             });
 
+      - name: Upload debug artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hermes-review-debug-pr${{ github.event.pull_request.number }}
+          path: |
+            /tmp/hermes_task.json
+            /tmp/hermes_runs_response.json
+            /tmp/hermes_run_result.json
+            /tmp/hermes_poll_latest.json
+            /tmp/hermes_health.json
+          retention-days: 7
+          if-no-files-found: ignore
+
       - name: Post failure notice
         if: failure()
         uses: actions/github-script@v7
         with:
           script: |
+            const { execSync } = require('child_process');
+            let logSnippet = '';
+            try {
+              logSnippet = execSync(
+                'tail -n 50 ~/.hermes/profiles/code-reviewer/logs/agent.log 2>/dev/null || echo "(log not available)"'
+              ).toString().slice(0, 2000);
+            } catch (e) {
+              logSnippet = '(could not read agent log)';
+            }
+            const ts = new Date().toISOString().slice(0, 16) + ' UTC';
+            const runUrl = `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const body = [
+              `> 🤖 **Hermes Review** — agent run failed or timed out · ${ts}`,
+              '',
+              `Check the [Actions log](${runUrl}) and the \`hermes-review-debug\` artifact for details.`,
+              '',
+              '<details><summary>Last 50 lines of agent.log</summary>',
+              '',
+              '```',
+              logSnippet,
+              '```',
+              '</details>'
+            ].join('\n');
             await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: context.issue.number,
-              body: '> 🤖 **Hermes Review** — agent run failed or timed out. Check the Actions log for details.'
+              body
             });
