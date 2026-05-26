@@ -282,7 +282,7 @@ jobs:
             echo "[$(date -u +%H:%M:%S)] Hermes slot acquired"
 
             HTTP_CODE=$(curl -s -o /tmp/hermes_runs_response.json -w "%{http_code}" \
-              -X POST http://127.0.0.1:8642/v1/runs \
+              -X POST http://127.0.0.1:8643/v1/runs \
               -H "Authorization: Bearer $HERMES_API_KEY" \
               -H "Content-Type: application/json" \
               -d @/tmp/hermes_task.json)
@@ -303,7 +303,7 @@ jobs:
             POLL=15
 
             while [ "$ELAPSED" -lt "$MAX_WAIT" ]; do
-              RESULT=$(curl -s "http://127.0.0.1:8642/v1/runs/$RUN_ID" \
+              RESULT=$(curl -s "http://127.0.0.1:8643/v1/runs/$RUN_ID" \
                 -H "Authorization: Bearer $HERMES_API_KEY")
 
               STATUS=$(echo "$RESULT" | python3 -c \
@@ -351,7 +351,7 @@ jobs:
             const fs = require('fs');
             const review = fs.readFileSync('/tmp/hermes_review.md', 'utf8');
             const ts = new Date().toISOString().slice(0, 16) + ' UTC';
-            const header = `> 🤖 **Hermes Review** (qwen3.6-35b-a3b) · ${ts}\n\n`;
+            const header = `> 🤖 **Hermes Review** (deepseek-v3-5 via openrouter) · ${ts}\n\n`;
             await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
