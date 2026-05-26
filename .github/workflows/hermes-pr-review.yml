@@ -7,7 +7,10 @@ on:
 jobs:
   review:
     runs-on: self-hosted
-    timeout-minutes: 30
+    timeout-minutes: 90
+    concurrency:
+      group: ${{ github.repository }}-pr-${{ github.event.pull_request.number }}
+      cancel-in-progress: true
     permissions:
       contents: read
       pull-requests: write
@@ -269,49 +272,47 @@ jobs:
           print("Prompt written to /tmp/hermes_task.json")
           PYEOF
 
-      - name: Submit to Hermes Runs API
-        id: submit_run
-        run: |
-          HTTP_CODE=$(curl -s -o /tmp/hermes_runs_response.json -w "%{http_code}" \
-            -X POST http://127.0.0.1:8642/v1/runs \
-            -H "Authorization: Bearer $HERMES_API_KEY" \
-            -H "Content-Type: application/json" \
-            -d @/tmp/hermes_task.json)
-
-          echo "HTTP status: $HTTP_CODE"
-          echo "Response body: $(cat /tmp/hermes_runs_response.json)"
-
-          if [ "$HTTP_CODE" -lt 200 ] || [ "$HTTP_CODE" -ge 300 ]; then
-            echo "Hermes API error (HTTP $HTTP_CODE)"
-            exit 1
-          fi
-
-          RUN_ID=$(python3 -c "import json; print(json.load(open('/tmp/hermes_runs_response.json'))['run_id'])")
-          echo "run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
+      - name: Run Hermes review
+        id: hermes_review
         env:
           HERMES_API_KEY: ${{ secrets.HERMES_API_KEY }}
-
-      - name: Wait for Hermes to complete
-        id: wait_run
-        env:
-          HERMES_API_KEY: ${{ secrets.HERMES_API_KEY }}
-          RUN_ID: ${{ steps.submit_run.outputs.run_id }}
         run: |
-          MAX_WAIT=1500
-          ELAPSED=0
-          POLL=15
+          (
+            flock -x 200
+            echo "[$(date -u +%H:%M:%S)] Hermes slot acquired"
 
-          while [ "$ELAPSED" -lt "$MAX_WAIT" ]; do
-            RESULT=$(curl -s "http://127.0.0.1:8642/v1/runs/$RUN_ID" \
-              -H "Authorization: Bearer $HERMES_API_KEY")
+            HTTP_CODE=$(curl -s -o /tmp/hermes_runs_response.json -w "%{http_code}" \
+              -X POST http://127.0.0.1:8642/v1/runs \
+              -H "Authorization: Bearer $HERMES_API_KEY" \
+              -H "Content-Type: application/json" \
+              -d @/tmp/hermes_task.json)
 
-            STATUS=$(echo "$RESULT" | python3 -c \
-              "import sys,json; print(json.load(sys.stdin).get('status','unknown'))")
-            echo "[${ELAPSED}s] status: $STATUS"
+            echo "HTTP status: $HTTP_CODE"
+            echo "Response body: $(cat /tmp/hermes_runs_response.json)"
 
-            if [ "$STATUS" = "completed" ]; then
-              echo "$RESULT" > /tmp/hermes_run_result.json
-              python3 << 'PYEOF'
+            if [ "$HTTP_CODE" -lt 200 ] || [ "$HTTP_CODE" -ge 300 ]; then
+              echo "Hermes API error (HTTP $HTTP_CODE)"
+              exit 1
+            fi
+
+            RUN_ID=$(python3 -c "import json; print(json.load(open('/tmp/hermes_runs_response.json'))['run_id'])")
+            echo "run_id: $RUN_ID"
+
+            MAX_WAIT=4800
+            ELAPSED=0
+            POLL=15
+
+            while [ "$ELAPSED" -lt "$MAX_WAIT" ]; do
+              RESULT=$(curl -s "http://127.0.0.1:8642/v1/runs/$RUN_ID" \
+                -H "Authorization: Bearer $HERMES_API_KEY")
+
+              STATUS=$(echo "$RESULT" | python3 -c \
+                "import sys,json; print(json.load(sys.stdin).get('status','unknown'))")
+              echo "[${ELAPSED}s] status: $STATUS"
+
+              if [ "$STATUS" = "completed" ]; then
+                echo "$RESULT" > /tmp/hermes_run_result.json
+                python3 << 'PYEOF'
           import json
           r = json.load(open('/tmp/hermes_run_result.json'))
           out = r.get("output") or ""
@@ -323,25 +324,27 @@ jobs:
           with open("/tmp/hermes_review.md", "w") as f:
               f.write(out)
           PYEOF
-              echo "status=completed" >> "$GITHUB_OUTPUT"
-              break
+                echo "status=completed" >> "$GITHUB_OUTPUT"
+                break
 
-            elif [ "$STATUS" = "failed" ] || [ "$STATUS" = "error" ]; then
-              echo "status=failed" >> "$GITHUB_OUTPUT"
+              elif [ "$STATUS" = "failed" ] || [ "$STATUS" = "error" ]; then
+                echo "status=failed" >> "$GITHUB_OUTPUT"
+                exit 1
+              fi
+
+              sleep "$POLL"
+              ELAPSED=$((ELAPSED + POLL))
+            done
+
+            if [ "$ELAPSED" -ge "$MAX_WAIT" ]; then
+              echo "status=timeout" >> "$GITHUB_OUTPUT"
               exit 1
             fi
 
-            sleep "$POLL"
-            ELAPSED=$((ELAPSED + POLL))
-          done
-
-          if [ "$ELAPSED" -ge "$MAX_WAIT" ]; then
-            echo "status=timeout" >> "$GITHUB_OUTPUT"
-            exit 1
-          fi
+          ) 200>/tmp/hermes_global.lock
 
       - name: Post review comment
-        if: steps.wait_run.outputs.status == 'completed'
+        if: steps.hermes_review.outputs.status == 'completed'
         uses: actions/github-script@v7
         with:
           script: |
