@@ -1,277 +1,15 @@
 #!/usr/bin/env bun
 
 import { setTimeout as sleep } from "timers/promises";
-import { mkdir } from "fs/promises";
 import path from "path";
 
-import { fetchHtml } from "./fetch.js";
-import { fetchHtmlWithBrowser } from "./fetch-browser.js";
-import { fetchFromApi } from "./fetch-api.js";
-import { fetchFromEmbeddedJson } from "./fetch-embedded.js";
-import { parseSpecialsFromHtml, Selectors, Special } from "./parse.js";
-import { writeJsonToPath } from "./output.js";
-import { sendDiscordWebhook, sendDiscordMessageFromEnv } from "./notify.js";
-import { loadPreviousItems, findNewItems, findRemovedItems } from "./diff.js";
-import { loadConfig, getSiteConfig, type AppConfig, type TargetDef, type SiteDef } from "./config.js";
-import { downloadAndResize } from "./images.js";
+import { loadConfig } from "./config.js";
 import { writeStaticPage } from "./static-page.js";
+import { runTargets } from "./scheduler/runner.js";
 
-// Re-export for backward compat with tests
-export type Target = TargetDef;
+export type { Target, RunOptions, RunResult } from "./scheduler/runner.js";
+export { runTargets } from "./scheduler/runner.js";
 
-export type RunOptions = {
-  onlySite?: string;
-  dryRun?: boolean;
-  notify?: boolean;
-  webhookOverride?: string | null;
-  /** Base directory for persisted data (default: cwd/data) */
-  dataDir?: string;
-  /** If true, notify for all items even if they aren't new */
-  notifyAll?: boolean;
-  /** Merged app config — passed in so tests can inject it */
-  appConfig?: AppConfig;
-};
-
-export type RunResult = {
-  target: Target;
-  items: Special[];
-  newItems: Special[];
-  removedItems: Special[];
-  error?: unknown;
-};
-
-/**
- * Fetch items for a single target using the appropriate strategy.
- */
-async function fetchItems(
-  t: TargetDef,
-  siteCfg: SiteDef & { rate_limit_seconds: number },
-): Promise<Special[]> {
-  const mode = siteCfg.type ?? "html";
-  const envOverride = process.env.RATE_LIMIT_SECONDS;
-  const rateLimit = envOverride !== undefined ? Number(envOverride) : siteCfg.rate_limit_seconds;
-
-  switch (mode) {
-    case "api": {
-      if (!siteCfg.api) throw new Error(`site config for "${t.site}" has type:api but no api config`);
-      const apiCfg = { ...siteCfg.api, url: t.url || siteCfg.api.url };
-      return fetchFromApi(apiCfg, 3, rateLimit);
-    }
-    case "embedded": {
-      if (!siteCfg.embedded) throw new Error(`site config for "${t.site}" has type:embedded but no embedded config`);
-      return fetchFromEmbeddedJson(t.url, siteCfg.embedded, 3, rateLimit);
-    }
-    case "browser": {
-      const selectors = siteCfg.selectors ?? { title: "h1" };
-      const html = await fetchHtmlWithBrowser(t.url, siteCfg.browser ?? {}, 3, rateLimit);
-      return parseSpecialsFromHtml(html, selectors);
-    }
-    case "html":
-    default: {
-      const selectors = siteCfg.selectors ?? { title: "h1" };
-      const html = await fetchHtml(t.url, 3, rateLimit);
-      return parseSpecialsFromHtml(html, selectors);
-    }
-  }
-}
-
-/**
- * Auto-discover the latest version of a URL with an incrementing trailing number.
- * e.g. /shop/SeasonalandHoliday/16 → tries /17, /18, ... until a 404, returns the last working URL.
- */
-async function autoDiscoverUrl(baseUrl: string, _siteCfg: SiteDef & { rate_limit_seconds: number }): Promise<string> {
-  const match = baseUrl.match(/^(.+\/)(\d+)(\/?)$/);
-  if (!match) {
-    console.log(`[auto-discover] URL "${baseUrl}" has no trailing number, using as-is`);
-    return baseUrl;
-  }
-
-  const [, prefix, numStr, trailing] = match;
-  let current = parseInt(numStr, 10);
-  let lastGood = baseUrl;
-  const ua = process.env.USER_AGENT ?? "CravingCrawler/0.1 (+https://github.com/Barbate91/CravingCrawler)";
-
-  // Probe up to 20 increments ahead
-  for (let i = 1; i <= 20; i++) {
-    const candidate = `${prefix}${current + i}${trailing}`;
-    try {
-      const res = await fetch(candidate, { method: "HEAD", headers: { "user-agent": ua }, redirect: "follow" });
-      if (res.ok) {
-        lastGood = candidate;
-        console.log(`[auto-discover] Found newer page: ${candidate}`);
-      } else {
-        break;
-      }
-    } catch {
-      break;
-    }
-  }
-
-  if (lastGood !== baseUrl) {
-    console.log(`[auto-discover] Upgraded ${baseUrl} → ${lastGood}`);
-  }
-  return lastGood;
-}
-
-export async function runTargets(targets: TargetDef[], opts: RunOptions = {}): Promise<RunResult[]> {
-  const dataDir = opts.dataDir ?? path.resolve(process.cwd(), "data");
-  const config = opts.appConfig ?? await loadConfig();
-  const results: RunResult[] = [];
-
-  for (const t of targets) {
-    if (opts.onlySite && t.site !== opts.onlySite) continue;
-    if (t.enabled === false) continue;
-    const label = `${t.site}/${t.region ?? "default"}`;
-    try {
-      const siteCfg = getSiteConfig(config, t.site);
-      const mode = siteCfg.type ?? "html";
-
-      // Auto-discover: try incrementing trailing number in URL to find latest page
-      let targetUrl = t.url;
-      if (t.auto_discover) {
-        targetUrl = await autoDiscoverUrl(t.url, siteCfg);
-      }
-
-      console.log(`[scrape] ${label} — fetching via ${mode} (${targetUrl})`);
-      const fetchStart = Date.now();
-      let items = await fetchItems({ ...t, url: targetUrl }, siteCfg);
-      console.log(`[scrape] ${label} — fetched ${items.length} item(s) in ${Date.now() - fetchStart}ms`);
-
-      // Keyword filtering: only keep items matching at least one keyword
-      if (t.keywords && t.keywords.length > 0) {
-        const lowerKeywords = t.keywords.map((k) => k.toLowerCase());
-        items = items.filter((item) => {
-          const text = `${item.title} ${item.description ?? ""}`.toLowerCase();
-          return lowerKeywords.some((kw) => text.includes(kw));
-        });
-      }
-
-      // Exclude filtering: remove items matching any exclude keyword
-      if (t.exclude_keywords && t.exclude_keywords.length > 0) {
-        const lowerExcludes = t.exclude_keywords.map((k) => k.toLowerCase());
-        items = items.filter((item) => {
-          const text = `${item.title} ${item.description ?? ""}`.toLowerCase();
-          return !lowerExcludes.some((kw) => text.includes(kw));
-        });
-      }
-
-      // Drop items with empty/whitespace-only titles
-      items = items.filter((item) => item.title.trim().length > 0);
-
-      // Exclude items whose title starts with a date pattern (e.g. "3/14/26 @12:30pm")
-      if (t.exclude_date_titles) {
-        items = items.filter((item) => !/^\d{1,2}\/\d{1,2}\//.test(item.title));
-      }
-
-      // Truncate to max_items after all filtering
-      if (t.max_items && t.max_items > 0) {
-        items = items.slice(0, t.max_items);
-      }
-
-      // Normalize image URLs before downloading
-      const baseUrl = new URL(t.url);
-      for (const item of items) {
-        if (item.image && !item.image.startsWith("http")) {
-          item.image = new URL(item.image, baseUrl).href;
-        }
-      }
-
-      // Fetch descriptions from detail pages if configured
-      if (siteCfg.detail_description_selector && !opts.dryRun) {
-        for (const item of items) {
-          if (item.link && !item.description) {
-            try {
-              const detailUrl = item.link.startsWith("http") ? item.link : `${baseUrl.origin}${item.link}`;
-              const mode = siteCfg.type ?? "html";
-              let detailHtml: string;
-              if (mode === "browser") {
-                detailHtml = await fetchHtmlWithBrowser(detailUrl, { timeout: 15000 }, 2, siteCfg.rate_limit_seconds ?? 5);
-              } else {
-                detailHtml = await fetchHtml(detailUrl, 2, siteCfg.rate_limit_seconds ?? 5);
-              }
-              const { load } = await import("cheerio");
-              const $detail = load(detailHtml);
-              const desc = $detail(siteCfg.detail_description_selector).text().trim();
-              if (desc) item.description = desc;
-            } catch (err) {
-              console.warn(`[detail-page] Failed to fetch description for "${item.title}":`, err);
-            }
-          }
-        }
-      }
-
-      // Download and resize images to local WebP thumbnails
-      if (!opts.dryRun) {
-        const withImages = items.filter(i => i.image?.startsWith("http"));
-        if (withImages.length > 0) {
-          console.log(`[scrape] ${label} — downloading ${withImages.length} image(s)`);
-        }
-        for (const item of items) {
-          if (item.image && item.image.startsWith("http")) {
-            const slug = item.title.replace(/[^a-z0-9]+/gi, "-").toLowerCase().slice(0, 40);
-            item.image = await downloadAndResize(item.image, t.site, slug);
-          }
-        }
-      }
-
-      // diff against previous run
-      const previous = await loadPreviousItems(dataDir, t.site, t.region);
-      const newItems = previous ? findNewItems(previous, items) : items;
-      const removedItems = previous ? findRemovedItems(previous, items) : [];
-      console.log(`[scrape] ${label} — done: ${items.length} total, +${newItems.length} new, -${removedItems.length} removed`);
-
-      results.push({ target: t, items, newItems, removedItems });
-
-      // persist output
-      if (!opts.dryRun && items.length > 0) {
-        const date = new Date().toISOString().slice(0, 10);
-        const safeSite = t.site.replace(/[^a-z0-9_-]/gi, "-").toLowerCase();
-        const safeRegion = (t.region ?? "default").replace(/[^a-z0-9_-]/gi, "-").toLowerCase();
-        const outdir = path.join(dataDir, safeSite, safeRegion);
-        await mkdir(outdir, { recursive: true });
-        const outPath = path.join(outdir, `${date}.json`);
-        await writeJsonToPath(items, outPath);
-      }
-
-      // notification — only fire for new or removed items (unless notifyAll)
-      if (opts.notify) {
-        const itemsToReport = opts.notifyAll ? items : newItems;
-        const parts: string[] = [];
-
-        if (itemsToReport.length > 0) {
-          const short = itemsToReport.map((i) => `  • ${i.title}${i.price ? ` — ${i.price}` : ""}`).slice(0, 6).join("\n");
-          parts.push(`🆕 ${itemsToReport.length} new item(s):\n${short}`);
-        }
-        if (removedItems.length > 0) {
-          const short = removedItems.map((i) => `  • ${i.title}`).slice(0, 4).join("\n");
-          parts.push(`⏳ ${removedItems.length} leaving soon:\n${short}`);
-        }
-
-        if (parts.length > 0) {
-          const message = `**CravingCrawler** — ${t.site} (${t.region ?? "default"})\n${parts.join("\n")}`;
-          try {
-            const webhook = opts.webhookOverride ?? process.env.DISCORD_WEBHOOK_URL ?? null;
-            if (webhook) {
-              await sendDiscordWebhook(webhook, message);
-            } else {
-              await sendDiscordMessageFromEnv(message, { targetUser: process.env.DISCORD_TARGET_USER_ID });
-            }
-          } catch (err) {
-            console.warn("notification failed", err);
-          }
-        }
-      }
-    } catch (err) {
-      console.error(`[scrape] ${label} — error: ${err instanceof Error ? err.message : err}`);
-      results.push({ target: t, items: [], newItems: [], removedItems: [], error: err });
-    }
-  }
-  return results;
-}
-
-/**
- * Run a single pass: load config, run all targets, print summary.
- */
 async function runOnce(opts: {
   configPath?: string;
   onlySite?: string;
@@ -304,7 +42,6 @@ async function runOnce(opts: {
   const succeeded = res.filter(r => !r.error).length;
   console.log(`[CravingCrawler] Scrape finished in ${elapsed}s — ${succeeded}/${res.length} succeeded`);
 
-  // print short summary
   const summary = res.map(r => ({
     site: r.target.site,
     url: r.target.url,
@@ -318,7 +55,6 @@ async function runOnce(opts: {
   return { config, results: res };
 }
 
-// Lightweight CLI wrapper so this can be run by cron / container / GH Actions
 if (import.meta.main) {
   const argv = process.argv.slice(2);
   const configPath = argv.includes("--config") ? argv[argv.indexOf("--config") + 1] : undefined;
@@ -336,7 +72,6 @@ if (import.meta.main) {
   const runOpts = { configPath, onlySite, dryRun, notify, notifyAll, webhook, dataDir };
 
   if (loopFlag) {
-    // Loop mode: run forever, sleeping between passes
     console.log("[CravingCrawler] Starting in loop mode...");
     while (true) {
       const startTime = Date.now();
@@ -349,12 +84,10 @@ if (import.meta.main) {
         await sleep(sleepMs);
       } catch (err) {
         console.error("[CravingCrawler] Error during run:", err);
-        // sleep 5 min on error before retrying
         await sleep(5 * 60 * 1000);
       }
     }
   } else {
-    // Single-pass mode
     const { results } = await runOnce(runOpts);
     if (pageFlag) {
       const outPath = path.resolve(process.cwd(), "public/index.html");
