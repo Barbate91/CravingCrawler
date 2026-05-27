@@ -41,7 +41,7 @@ jobs:
           set -euo pipefail
           git fetch origin "$BASE_REF" "$HEAD_REF"
 
-          git diff "origin/$BASE_REF...HEAD" > /tmp/pr.diff
+          git diff -U10 "origin/$BASE_REF...HEAD" > /tmp/pr.diff
           git diff --name-status "origin/$BASE_REF...HEAD" > /tmp/pr.files
           git log --oneline --no-merges "origin/$BASE_REF..HEAD" > /tmp/pr.commits
 
@@ -102,7 +102,13 @@ jobs:
             elif [ -f "$WORKSPACE/package.json" ]; then
               TEST_CMD="npm test -- --passWithNoTests 2>&1 | tail -20"
             elif [ -f "$WORKSPACE/pyproject.toml" ] || [ -f "$WORKSPACE/requirements.txt" ]; then
-              TEST_CMD="python -m pytest --tb=short -q 2>&1 | tail -20"
+              if [ -f "$WORKSPACE/venv/bin/pytest" ]; then
+                TEST_CMD="venv/bin/pytest --tb=short -q 2>&1 | tail -20"
+              elif [ -f "$WORKSPACE/.venv/bin/pytest" ]; then
+                TEST_CMD=".venv/bin/pytest --tb=short -q 2>&1 | tail -20"
+              else
+                TEST_CMD="python3 -m pytest --tb=short -q 2>&1 | tail -20"
+              fi
             fi
           fi
 
@@ -126,6 +132,35 @@ jobs:
             -not -path './.svelte-kit/*' -not -path './dist/*' -not -path './__pycache__/*' \
             | sort | head -100 > /tmp/preflight_tree.txt 2>/dev/null || true
 
+          # Capture project docs for prompt injection (truncated to keep prompt size reasonable)
+          for doc in README.md ARCHITECTURE.md DESIGN_PLAN.md CLAUDE.md CONVENTIONS.md; do
+            if [ -f "$doc" ]; then
+              head -c 6000 "$doc" > "/tmp/preflight_doc_${doc}" 2>/dev/null || true
+            fi
+          done
+
+          # Parse .hermes-review.yml: focus_areas + always_include
+          > /tmp/preflight_focus_areas.txt
+          if [ -f ".hermes-review.yml" ]; then
+            python3 - <<'PEOF'
+import yaml, os, sys
+try:
+    cfg = yaml.safe_load(open('.hermes-review.yml')) or {}
+except Exception as e:
+    print(f"WARNING: could not parse .hermes-review.yml: {e}", file=sys.stderr)
+    sys.exit(0)
+areas = cfg.get('focus_areas', [])
+with open('/tmp/preflight_focus_areas.txt', 'w') as f:
+    f.write('\n'.join('- ' + str(a) for a in areas))
+for p in cfg.get('always_include', []):
+    if os.path.exists(p):
+        content = open(p).read(4000)
+        safe = p.replace('/', '_').replace('.', '_')
+        with open(f'/tmp/preflight_always_{safe}', 'w') as f:
+            f.write(f'### {p}\n```\n{content}\n```\n')
+PEOF
+          fi
+
           echo "Pre-flight complete. Test: $(wc -l < /tmp/preflight_test.txt) lines, Build: $(wc -l < /tmp/preflight_build.txt) lines"
 
       - name: Build Hermes task JSON
@@ -143,13 +178,21 @@ jobs:
           # Build the prompt text safely using a Python heredoc
           # All untrusted values arrive as env vars and are JSON-encoded by python — no shell injection
           python3 << 'PYEOF'
-          import os, json
+          import glob, json, os
 
           def _read(path, default="(not available)"):
               try:
                   return open(path).read().strip() or default
               except Exception:
                   return default
+
+          def _read_doc(*candidates):
+              """Return first non-empty doc from the candidate list, or '(not present)'."""
+              for name in candidates:
+                  content = _read(f'/tmp/preflight_doc_{name}', '')
+                  if content:
+                      return content
+              return "(not present)"
 
           has_shell = int(os.environ.get("HAS_SHELL", "0"))
           shell_section = ""
@@ -163,9 +206,36 @@ jobs:
           - Flag any command injection risks from unvalidated inputs
           """
 
-          test_result = _read('/tmp/preflight_test.txt')
-          build_result = _read('/tmp/preflight_build.txt')
-          repo_tree = _read('/tmp/preflight_tree.txt')
+          test_result   = _read('/tmp/preflight_test.txt')
+          build_result  = _read('/tmp/preflight_build.txt')
+          repo_tree     = _read('/tmp/preflight_tree.txt')
+          readme        = _read_doc('README.md')
+          arch_doc      = _read_doc('ARCHITECTURE.md', 'DESIGN_PLAN.md')
+          conventions   = _read_doc('CLAUDE.md', 'CONVENTIONS.md')
+          focus_areas   = _read('/tmp/preflight_focus_areas.txt', '').strip()
+
+          always_includes = []
+          for f in sorted(glob.glob('/tmp/preflight_always_*')):
+              try:
+                  always_includes.append(open(f).read())
+              except Exception:
+                  pass
+          always_include_block = '\n\n'.join(always_includes)
+
+          focus_section = (
+              f"\n### Project-Specific Focus Areas\n{focus_areas}\n"
+              if focus_areas else ""
+          )
+          always_section = (
+              f"\n### Always-Include Files\n{always_include_block}\n"
+              if always_include_block.strip() else ""
+          )
+          focus_phase3 = (
+              f"\n**Project-Specific Focus Areas**: The `.hermes-review.yml` for this repo "
+              f"flags the following as high-priority:\n{focus_areas}\nEnsure each area is "
+              f"explicitly addressed in your findings.\n"
+              if focus_areas else ""
+          )
 
           prompt = f"""# GitHub Pull Request Code Review
 
@@ -179,6 +249,17 @@ jobs:
           - Base → Head: {os.environ['BASE_REF']} → {os.environ['HEAD_REF']}
           - Changed directories: {os.environ['CHANGED_DIRS']}
 
+          ## Project Documentation
+
+          ### README.md
+          {readme}
+
+          ### Architecture / Design Notes
+          {arch_doc}
+
+          ### Coding Conventions (CLAUDE.md / CONVENTIONS.md)
+          {conventions}
+          {focus_section}{always_section}
           ## Pre-flight Test Results
           {test_result}
 
@@ -211,17 +292,14 @@ jobs:
 
           ### Phase 0 — Codebase Orientation (codebase-deep-dive skill)
 
-          Before reading a single line of diff, orient yourself to the project. In
-          {os.environ['GITHUB_WORKSPACE']}, read these files in order (stop when none remain):
+          The project documentation has been pre-loaded above in the "Project Documentation"
+          section — review it before examining the diff. If README, Architecture, or
+          Conventions sections show "(not present)", check the repo for alternative names.
 
-          1. README.md — purpose, quick-start, architecture overview
-          2. ARCHITECTURE.md or DESIGN_PLAN.md — stack choices, directory layout, DB schema
-          3. CLAUDE.md or CONVENTIONS.md — coding standards and project-specific gotchas
-          4. pyproject.toml / package.json / Cargo.toml / go.mod — dependencies and runtime
-
-          Extract and note: tech stack, database/ORM, test command, and any stated conventions.
-          This context governs all findings below — do not flag style issues that conflict with
-          documented project conventions.
+          Also read: pyproject.toml / package.json / Cargo.toml / go.mod — for dependency
+          and runtime context. Extract: tech stack, database/ORM, test command, any stated
+          conventions. This context governs all findings — do not flag style issues that
+          conflict with documented project conventions.
 
           ---
 
@@ -261,7 +339,7 @@ jobs:
           cd {os.environ['GITHUB_WORKSPACE']}
 
           # Detect framework and run — pick the one that matches
-          # Python:  python -m pytest --tb=no -q 2>&1 | tail -5
+          # Python:  venv/bin/pytest --tb=no -q 2>&1 | tail -5   (or python3 -m pytest if no venv)
           # Node:    npm test -- --passWithNoTests 2>&1 | tail -5
           # Rust:    cargo test 2>&1 | tail -5
           # Go:      go test ./... 2>&1 | tail -5
@@ -283,7 +361,7 @@ jobs:
           the diff alone is insufficient to judge correctness or intent.
 
           **Skills to activate during analysis:**
-
+          {focus_phase3}
           **GitHub workflow review** (github skill): Use gh CLI if needed to fetch linked
           issues or related PRs. Verify commit messages are clear and branch naming follows
           project conventions.
