@@ -143,22 +143,22 @@ jobs:
           > /tmp/preflight_focus_areas.txt
           if [ -f ".hermes-review.yml" ]; then
             python3 - <<'PEOF'
-import yaml, os, sys
-try:
-    cfg = yaml.safe_load(open('.hermes-review.yml')) or {}
-except Exception as e:
-    print(f"WARNING: could not parse .hermes-review.yml: {e}", file=sys.stderr)
-    sys.exit(0)
-areas = cfg.get('focus_areas', [])
-with open('/tmp/preflight_focus_areas.txt', 'w') as f:
-    f.write('\n'.join('- ' + str(a) for a in areas))
-for p in cfg.get('always_include', []):
-    if os.path.exists(p):
-        content = open(p).read(4000)
-        safe = p.replace('/', '_').replace('.', '_')
-        with open(f'/tmp/preflight_always_{safe}', 'w') as f:
-            f.write(f'### {p}\n```\n{content}\n```\n')
-PEOF
+          import yaml, os, sys
+          try:
+              cfg = yaml.safe_load(open('.hermes-review.yml')) or {}
+          except Exception as e:
+              print(f"WARNING: could not parse .hermes-review.yml: {e}", file=sys.stderr)
+              sys.exit(0)
+          areas = cfg.get('focus_areas', [])
+          with open('/tmp/preflight_focus_areas.txt', 'w') as f:
+              f.write('\n'.join('- ' + str(a) for a in areas))
+          for p in cfg.get('always_include', []):
+              if os.path.exists(p):
+                  content = open(p).read(4000)
+                  safe = p.replace('/', '_').replace('.', '_')
+                  with open(f'/tmp/preflight_always_{safe}', 'w') as f:
+                      f.write(f'### {p}\n```\n{content}\n```\n')
+          PEOF
           fi
 
           echo "Pre-flight complete. Test: $(wc -l < /tmp/preflight_test.txt) lines, Build: $(wc -l < /tmp/preflight_build.txt) lines"
