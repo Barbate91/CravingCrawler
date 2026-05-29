@@ -355,7 +355,49 @@ jobs:
 
           ---
 
-          ### Phase 3 — Diff Analysis
+          ### Phase 3 — Mandatory Cross-Reference (run before reading the diff)
+
+          Before analysing any changed file, run these verification commands. They prevent
+          false positives caused by reasoning from the diff alone.
+
+          **3a — Locate type/schema definitions referenced by the diff:**
+          ```bash
+          cd {os.environ['GITHUB_WORKSPACE']}
+          # Find schema/model/type files relevant to the diff
+          git diff HEAD~1 --name-only | xargs -I{{}} dirname {{}} | sort -u | while read dir; do
+            find "$dir" -maxdepth 2 -name "schema*" -o -name "models*" -o -name "types*" 2>/dev/null
+          done
+          # Also find project-wide schema files
+          find . -maxdepth 4 \( -name "schema.ts" -o -name "schema.py" -o -name "models.py" \
+            -o -name "schema.rs" -o -name "*.prisma" \) -not -path "*/node_modules/*" \
+            -not -path "*/.svelte-kit/*" 2>/dev/null
+          ```
+
+          **3b — For every field/column/property the diff accesses, verify it exists:**
+          For each new identifier `foo.bar` or `table.column` in the diff:
+          ```bash
+          # Example: verify 'maxSessions' exists in the schema
+          grep -rn "maxSessions\|max_sessions" src/ --include="*.ts" --include="*.py" --include="*.rs" | head -20
+          ```
+          **ORM column-name mapping rule:** ORMs map DB snake_case columns to camelCase
+          properties (e.g. Drizzle: `integer('max_sessions')` → TS property `maxSessions`;
+          SQLAlchemy: `Column('first_name')` → `first_name`). NEVER flag a camelCase
+          property as missing without first reading the schema definition file.
+
+          **3c — Verify any type imports the diff adds are actually exported:**
+          ```bash
+          # Example: check 'assembleGanttGoblinContext' is exported from context.ts
+          grep -n "^export" src/lib/server/ai/context.ts 2>/dev/null | head -20
+          ```
+
+          **Rule: do not raise any finding about a missing field, undefined property, wrong
+          type, or non-existent function without first running a terminal command that confirms
+          the absence. If you cannot confirm absence via terminal, mark it [HYPOTHESIS] and
+          do not assign HIGH or CRITICAL severity.**
+
+          ---
+
+          ### Phase 4 — Diff Analysis
 
           Now read the diff and changed files. Use terminal to read full file context wherever
           the diff alone is insufficient to judge correctness or intent.
