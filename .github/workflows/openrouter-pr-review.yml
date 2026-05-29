@@ -32,17 +32,9 @@ jobs:
           git log --oneline --no-merges "origin/$BASE_REF..HEAD" > /tmp/pr.commits
           echo "Diff: $(wc -l < /tmp/pr.diff) lines across $(wc -l < /tmp/pr.files) files"
 
-      - name: Source OpenRouter API key
-        run: |
-          set -euo pipefail
-          KEY=$(grep -m1 '^OPENROUTER_API_KEY=' ~/.hermes/.env | cut -d= -f2- || true)
-          if [ -z "$KEY" ]; then
-            echo "WARNING: OPENROUTER_API_KEY not found in ~/.hermes/.env"
-          fi
-          echo "OPENROUTER_API_KEY=$KEY" >> "$GITHUB_ENV"
-
       - name: Run Tier-1 review
         env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_PR_REVIEW_KEY }}
           REPO: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           PR_TITLE: ${{ github.event.pull_request.title }}
