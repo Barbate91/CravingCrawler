@@ -1,5 +1,5 @@
 import { expect, it, beforeEach, afterEach } from "bun:test";
-import { runTargets, Target } from "../src/scheduler.js";
+import { runTargets, type Target } from "../src/scheduler.js";
 import type { AppConfig } from "../src/config.js";
 import { tmpdir } from "os";
 import path from "path";
@@ -36,9 +36,9 @@ it("runs targets and calls parser + notifier (injected via env)", async () => {
 
   // We'll simulate fetch by overriding globalThis.fetch to return a simple HTML page
   // that matches the selectors in the test config
-  globalThis.fetch = async () => ({ ok: true, text: async () => `
+  globalThis.fetch = (async () => ({ ok: true, text: async () => `
     <div class="product-card"><h3 class="product-title">X</h3><div class="product-price">$1.00</div></div>
-  `, status: 200 }) as any;
+  `, status: 200 }) as any) as unknown as typeof fetch;
 
   // use a temp data dir so diff module doesn't hang looking for previous data
   const dataDir = path.join(tmpdir(), `cravingcrawler-test-${Date.now()}`);

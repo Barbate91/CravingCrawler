@@ -1,4 +1,4 @@
-import { readFile, readdir } from "node:fs/promises";
+import { readFile, readdir, stat } from "node:fs/promises";
 import path from "node:path";
 import type { Special } from "../parse.js";
 
@@ -6,6 +6,8 @@ export type SiteSummary = {
   site: string;
   region: string;
   date: string;
+  /** ISO timestamp of the last successful scrape (mtime of the latest data file). */
+  scrapedAt: string | null;
   items: Special[];
 };
 
@@ -48,15 +50,22 @@ export async function loadAllLatest(): Promise<SiteSummary[]> {
 
       const latestFile = jsonFiles[0];
       const date = latestFile.replace(".json", "");
+      const latestPath = path.join(regionPath, latestFile);
       let items: Special[];
       try {
-        const raw = await readFile(path.join(regionPath, latestFile), "utf8");
+        const raw = await readFile(latestPath, "utf8");
         items = JSON.parse(raw) as Special[];
       } catch (err) {
-        console.warn(`[data] Skipping corrupt file ${path.join(regionPath, latestFile)}:`, err);
+        console.warn(`[data] Skipping corrupt file ${latestPath}:`, err);
         continue;
       }
-      summaries.push({ site, region, date, items });
+      let scrapedAt: string | null = null;
+      try {
+        scrapedAt = (await stat(latestPath)).mtime.toISOString();
+      } catch {
+        // freshness is best-effort; the data itself still renders
+      }
+      summaries.push({ site, region, date, scrapedAt, items });
     }
   }
 

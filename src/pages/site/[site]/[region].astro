@@ -27,7 +27,7 @@ const emojis = ["🍪", "🧁", "🍰", "🍩", "🎂", "🍫"];
 
   <div class="hero" style="padding-top: 0.5rem;">
     <h1 style="text-transform: capitalize;">{site}</h1>
-    <p>{region} &middot; Updated {current.date}</p>
+    <p>{region} &middot; Updated {current.date}{current.scrapedAt && ` · last scrape ${new Date(current.scrapedAt).toLocaleString()}`}</p>
   </div>
 
   {allRegions.length > 1 && (
