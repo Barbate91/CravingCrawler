@@ -14,9 +14,10 @@
   },
   "devDependencies": {
     "@types/bun": "latest",
+    "@types/yargs": "^17.0.35",
     "typescript": "^5.6.0"
   },
-  "description": "Track limited-time treats — scraper + web dashboard in one Bun app",
+  "description": "Track limited-time treats \u2014 scraper + web dashboard in one Bun app",
   "engines": {
     "bun": ">=1.0.0"
   },
@@ -24,6 +25,7 @@
     "dev": "bunx --bun astro dev",
     "start": "bunx --bun astro build && bun src/prod-server.ts",
     "build": "bunx --bun astro build",
+    "typecheck": "tsc --noEmit",
     "preview": "bunx --bun astro preview",
     "test": "bun test",
     "schedule": "bun run src/scheduler.ts --config config.yml",

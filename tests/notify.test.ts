@@ -9,7 +9,7 @@ it("sendDiscordDmUsingClient calls user's send", async () => {
     },
   };
   await sendDiscordDmUsingClient(fakeClient as any, "123", "hello there");
-  expect(sent).toBe("hello there");
+  expect(sent as string | null).toBe("hello there");
 });
 
 it("sendDiscordWebhook posts to webhook URL", async () => {

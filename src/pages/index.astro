@@ -19,6 +19,40 @@ for (const s of summaries) {
 }
 const siteCount = siteGroups.size;
 
+// Freshness: hours since last successful scrape per shop (max across regions)
+function hoursAgo(iso: string | null): number | null {
+  if (!iso) return null;
+  return (Date.now() - new Date(iso).getTime()) / 3_600_000;
+}
+function freshnessLabel(iso: string | null): string {
+  const h = hoursAgo(iso);
+  if (h === null) return "unknown";
+  if (h < 1) return "just now";
+  if (h < 24) return `${Math.round(h)}h ago`;
+  return `${Math.round(h / 24)}d ago`;
+}
+function freshnessClass(iso: string | null): string {
+  const h = hoursAgo(iso);
+  if (h === null) return "fresh-unknown";
+  if (h < 24) return "fresh-ok";
+  if (h < 72) return "fresh-stale";
+  return "fresh-old";
+}
+const shopChips = [...siteGroups.entries()].map(([site, group]) => {
+  const newest = group
+    .map((g) => g.scrapedAt)
+    .filter((t): t is string => !!t)
+    .sort()
+    .reverse()[0] ?? null;
+  return {
+    site,
+    label: site.replace(/-/g, " "),
+    region: group[0].region,
+    itemCount: group.reduce((n, g) => n + g.items.length, 0),
+    scrapedAt: newest,
+  };
+});
+
 // Flatten all items into a single list, tagged with site info
 const allCards = summaries.flatMap((s) =>
   s.items.map((item) => ({
@@ -61,6 +95,18 @@ const allCards = summaries.flatMap((s) =>
       <p>No treat data to display yet. The scraper will populate this page automatically.</p>
     )}
   </div>
+
+  {shopChips.length > 0 && (
+    <div class="shop-chips">
+      {shopChips.map((c) => (
+        <a href={`${base}/site/${c.site}/${c.region}`} class={`shop-chip ${freshnessClass(c.scrapedAt)}`} title={c.scrapedAt ? `Last scraped ${new Date(c.scrapedAt).toLocaleString()}` : "No scrape timestamp"}>
+          <span class="chip-name">{c.label}</span>
+          <span class="chip-count">{c.itemCount}</span>
+          <span class="chip-fresh">{freshnessLabel(c.scrapedAt)}</span>
+        </a>
+      ))}
+    </div>
+  )}
 
   {allCards.length > 0 && (
     <div class="item-grid">

@@ -63,8 +63,9 @@ export default function scraperIntegration(): AstroIntegration {
               console.log(`[scraper] Memory after: RSS=${Math.round(memAfter.rss / 1024 / 1024)}MB heap=${Math.round(memAfter.heapUsed / 1024 / 1024)}MB`);
 
               if (process.env.HEAP_SNAPSHOT) {
-                Bun.generateHeapSnapshot(`/app/data/heap-${Date.now()}.json`);
-                console.log("[scraper] Heap snapshot saved");
+                const snapshotPath = path.join(dataDir, `heap-${Date.now()}.json`);
+                await Bun.write(snapshotPath, Bun.generateHeapSnapshot("v8"));
+                console.log(`[scraper] Heap snapshot saved to ${snapshotPath}`);
               }
             }
           } catch (err) {

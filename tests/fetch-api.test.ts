@@ -17,8 +17,8 @@ it("fetchFromApi extracts items using dot-notation paths", async () => {
     },
   };
 
-  globalThis.fetch = async () =>
-    ({ ok: true, json: async () => fakeResponse, status: 200 }) as any;
+  globalThis.fetch = (async () =>
+    ({ ok: true, json: async () => fakeResponse, status: 200 }) as any) as unknown as typeof fetch;
 
   const config: ApiConfig = {
     url: "https://api.example.com/menu",
@@ -36,8 +36,8 @@ it("fetchFromApi extracts items using dot-notation paths", async () => {
 });
 
 it("fetchFromApi throws if itemsPath does not resolve to an array", async () => {
-  globalThis.fetch = async () =>
-    ({ ok: true, json: async () => ({ data: "not an array" }), status: 200 }) as any;
+  globalThis.fetch = (async () =>
+    ({ ok: true, json: async () => ({ data: "not an array" }), status: 200 }) as any) as unknown as typeof fetch;
 
   const config: ApiConfig = {
     url: "https://api.example.com/menu",

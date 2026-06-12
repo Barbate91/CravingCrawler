@@ -34,7 +34,7 @@ export function parseSpecialsFromHtml(html: string, selectors: Selectors): Speci
       const image = selectors.image ? extractImageUrl($(el).find(selectors.image).first()) : undefined;
       const link = selectors.link ? ($(el).find(selectors.link).attr("href") ?? undefined) : undefined;
       const description = selectors.description ? ($(el).find(selectors.description).text().trim() || undefined) : undefined;
-      items.push({ title, price: price ?? null, image, link, description, raw: $(el).html() });
+      items.push({ title, price: price ?? null, image, link, description, raw: $(el).html() ?? undefined });
     });
   } else if (!selectors.item && selectors.image) {
     // Zip-mode: collect titles and images separately, pair by index
@@ -81,7 +81,7 @@ export function parseSpecialsFromHtml(html: string, selectors: Selectors): Speci
         price = extractPriceLike($(el).parent().text());
       }
 
-      items.push({ title, price: price ?? null, image, raw: $(el).parent().html() });
+      items.push({ title, price: price ?? null, image, raw: $(el).parent().html() ?? undefined });
     });
   }
   return items;

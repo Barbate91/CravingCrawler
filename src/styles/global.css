@@ -368,3 +368,43 @@ details summary {
   border-top: 1px solid var(--brand-warm);
   margin-top: 2rem;
 }
+
+/* ── Shop freshness chips ── */
+.shop-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 0 0 1.25rem;
+}
+.shop-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.3rem 0.7rem;
+  border-radius: 999px;
+  border: 1px solid var(--pico-muted-border-color, #ccc);
+  font-size: 0.82rem;
+  text-decoration: none;
+  text-transform: capitalize;
+  line-height: 1.3;
+}
+.shop-chip:hover { border-color: var(--pico-primary, #0172ad); }
+.shop-chip .chip-count {
+  font-weight: 700;
+}
+.shop-chip .chip-fresh {
+  font-size: 0.72rem;
+  padding: 0.05rem 0.4rem;
+  border-radius: 999px;
+  text-transform: none;
+}
+.shop-chip.fresh-ok .chip-fresh { background: rgba(56, 142, 60, 0.15); color: #2e7d32; }
+.shop-chip.fresh-stale .chip-fresh { background: rgba(245, 124, 0, 0.15); color: #ef6c00; }
+.shop-chip.fresh-old .chip-fresh { background: rgba(211, 47, 47, 0.15); color: #c62828; }
+.shop-chip.fresh-unknown .chip-fresh { background: rgba(120, 120, 120, 0.15); color: #757575; }
+@media (prefers-color-scheme: dark) {
+  .shop-chip.fresh-ok .chip-fresh { color: #81c784; }
+  .shop-chip.fresh-stale .chip-fresh { color: #ffb74d; }
+  .shop-chip.fresh-old .chip-fresh { color: #e57373; }
+  .shop-chip.fresh-unknown .chip-fresh { color: #bdbdbd; }
+}
