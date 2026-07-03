@@ -13,15 +13,9 @@ import urllib.request
 
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 
-# Ordered fallback chain: primary model first, last resort last.
+# OpenRouter Free Models Router: auto-selects among free-tier models at $0 cost.
 MODEL_CHAIN = [
-    "deepseek/deepseek-v4-flash:free",
-    "qwen/qwen3-coder:free",
-    "minimax/minimax-m2.5:free",
-    "google/gemma-4-31b-it:free",
-    "openai/gpt-oss-120b:free",
-    "nvidia/nemotron-3-super-120b-a12b:free",
-    "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
+    "openrouter/free",
 ]
 
 SYSTEM_PROMPT = """\
